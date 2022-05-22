@@ -19,14 +19,19 @@ Back porch  [492-524]
 
 module Pong
 (
+  // global clock
   input logic clock,
+  // output signals
   output logic vga_hsync,
   output logic vga_vsync,
   output logic vga_R,
   output logic vga_G,
   output logic vga_B,
+  // pix_x() ports
   output logic[9:0] pix_x_ret,
+  // pix_y() ports
   output logic[9:0] pix_y_ret,
+  // tock_game() ports
   input logic tock_game_in_quad_a,
   input logic tock_game_in_quad_b
 );
@@ -53,10 +58,8 @@ module Pong
 
   //----------------------------------------
 
-  function logic[9:0] pix_x();  pix_x = px; endfunction
-  always_comb pix_x_ret = pix_x();
-  function logic[9:0] pix_y();  pix_y = py; endfunction
-  always_comb pix_y_ret = pix_y();
+  always_comb begin : pix_x pix_x_ret = px; end
+  always_comb begin : pix_y pix_y_ret = py; end
 
   //----------------------------------------
 
@@ -78,6 +81,8 @@ module Pong
   //----------------------------------------
 
   always_comb begin : tock_game
+    tick_in_quad_a = tock_game_in_quad_a;
+    tick_in_quad_b = tock_game_in_quad_b;
   end
 
   //----------------------------------------

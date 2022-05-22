@@ -5,12 +5,15 @@
 
 module Module
 (
+  // global clock
   input logic clock,
+  // tock() ports
   input logic[7:0] tock_val
 );
 /*public:*/
 
   always_comb begin : tock
+    tick_val = tock_val;
   end
 
 /*private:*/

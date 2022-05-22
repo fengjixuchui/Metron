@@ -5,6 +5,7 @@
 module Submod
 #(parameter int WIDTH,parameter  int HEIGHT = 2)
 (
+  // output signals
   output logic[WIDTH-1:0] my_width,
   output logic[HEIGHT-1:0] my_height
 );
@@ -19,6 +20,7 @@ endmodule
 
 module Module
 (
+  // tock() ports
   output logic[19:0] tock_ret
 );
 /*public:*/
@@ -28,6 +30,7 @@ module Module
   end
 
   Submod #(10,11) submodule(
+    // output signals
     .my_width(submodule_my_width),
     .my_height(submodule_my_height)
   );

@@ -385,6 +385,58 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   });
 
   //----------------------------------------
+  // Methods that are upstream from tocks _must_ be tocks.
+
+  err << propagate([&](MtMethod *m) {
+    if (m->in_init) return 0;
+    if (m->in_func) return 0;
+
+    for (auto &callee : m->internal_callees) {
+      if (callee->in_tock) {
+        if (m->in_tock) {
+          return 0;
+        } else {
+          if (verbose) LOG_B("%-20s is tock because it calls a tock.\n", m->cname());
+          m->in_tock = true;
+          return 1;
+        }
+      }
+    }
+
+    return 0;
+  });
+
+
+
+  // ZONE OF AMBIGUITY
+
+  err << propagate([&](MtMethod *m) {
+    if (m->in_init) return 0;
+    // zif (m->in_func) return 0;
+    if (m->in_tick) return 0;
+    if (m->in_tock) return 0;
+
+    if (m->name().starts_with("tick_")) {
+      m->in_tick = true;
+      m->in_func = false;
+      return 1;
+    }
+    else {
+      return 0;
+    }
+  });
+
+
+
+
+
+
+
+
+
+
+
+  //----------------------------------------
   // Methods that write outputs are tocks unless they're already ticks.
 
   err << propagate([&](MtMethod *m) {
@@ -407,28 +459,6 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
             m->cname());
         m->in_tock = true;
         return 1;
-      }
-    }
-
-    return 0;
-  });
-
-  //----------------------------------------
-  // Methods that are upstream from tocks _must_ be tocks.
-
-  err << propagate([&](MtMethod *m) {
-    if (m->in_init) return 0;
-    if (m->in_func) return 0;
-
-    for (auto &callee : m->internal_callees) {
-      if (callee->in_tock) {
-        if (m->in_tock) {
-          return 0;
-        } else {
-          if (verbose) LOG_B("%-20s is tock because it calls a tock.\n", m->cname());
-          m->in_tock = true;
-          return 1;
-        }
       }
     }
 
@@ -462,51 +492,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
     return 0;
   });
 
-#if 0
   //----------------------------------------
-  // If there are unmarked methods left, they must be upstream from a tick.
-  // If they don't have return values, we can mark them as a tick so we can
-  // reduce the total number of always_* blocks needed after conversion.
-
-  err << propagate([&](MtMethod *m) {
-    if (m->is_valid()) return 0;
-    if (m->has_return()) return 0;
-
-    for (auto &callee : m->callees) {
-      if (callee->in_tick) {
-        if (m->in_tick) {
-          return 0;
-        } else {
-          LOG_B(
-              "%-20s is tick because it hasn't been categorized yet, it has no "
-              "return value, and it's upstream from a tick.\n",
-              m->cname());
-          m->in_tick = true;
-          return 1;
-        }
-      }
-    }
-
-    return 0;
-  });
-
-  //----------------------------------------
-  // If there are _still_ unmarked methods, they are tocks upstream from ticks
-  // that have return values.
-
-  err << propagate([&](MtMethod *m) {
-    if (m->is_valid()) return 0;
-
-    if (m->in_tock) {
-      return 0;
-    } else {
-      m->in_tock = true;
-      return 1;
-    }
-    return 0;
-  });
-#endif
-
   // Just mark everything left as tock.
 
   err << propagate([&](MtMethod *m) {
@@ -520,6 +506,78 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
     }
     return 0;
   });
+
+  //----------------------------------------
+  // Methods categorized, we can assign emit types
+
+  for (auto mod : modules) {
+    for (auto m : mod->all_methods) {
+
+      if (m->_name == "tick") {
+        int x = 0;
+        x++;
+      }
+
+      m->emit_as_always_comb = m->in_tock && !m->called_in_tock();
+      m->emit_as_always_ff = m->in_tick && !m->called_in_tick();
+
+      m->emit_as_init = m->is_constructor();
+
+      if (m->emit_as_always_comb) {
+      }
+      else if (m->emit_as_always_ff) {
+      }
+      else if (m->emit_as_init) {
+      }
+      else if (m->in_init) {
+        m->emit_as_task = true;
+      }
+      else if (m->in_tick) {
+        m->emit_as_task = true;
+      }
+      else if (m->in_tock) {
+        //current_method->emit_as_func = true;
+        m->emit_as_always_comb = true;
+      }
+      else if (m->in_func) {
+        m->emit_as_func = true;
+      }
+      else {
+        err << ERR("wat\n");
+      }
+
+      if (m->in_func && m->is_public() && !m->called_in_module()) {
+        m->needs_ports = true;
+      }
+
+      if (m->in_tick) {
+        if (!m->called_in_module()) {
+          m->needs_ports = true;
+        }
+        else if (m->called_by_tock()) {
+          m->needs_binding = true;
+        }
+      }
+
+      if (m->in_tock) {
+        if (m->called_in_module()) {
+          m->needs_binding = true;
+        }
+        else {
+          m->needs_ports = true;
+        }
+      }
+
+
+      if (m->in_func && m->is_public() && !m->called_in_module()) {
+        m->emit_as_func = false;
+        m->emit_as_always_comb = true;
+        //current_method->needs_trigger = true;
+      }
+
+
+    }
+  }
 
   //----------------------------------------
   // Methods categorized, we can split up internal_callers
@@ -562,6 +620,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   //----------------------------------------
   // Check for ticks with return values.
 
+  /*
   for (auto mod : modules) {
     for (auto m : mod->all_methods) {
       if (m->in_tick && m->has_return()) {
@@ -570,6 +629,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
       }
     }
   }
+  */
 
   //----------------------------------------
   // Done!

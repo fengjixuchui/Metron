@@ -8,10 +8,15 @@
 module uart_tx
 #(parameter int cycles_per_bit = 4)
 (
+  // global clock
   input logic clock,
+  // serial() ports
   output logic serial_ret,
+  // cts() ports
   output logic cts_ret,
+  // idle() ports
   output logic idle_ret,
+  // tick() ports
   input logic tick_i_rstn,
   input logic[7:0] tick_i_data,
   input logic tick_i_req
@@ -23,23 +28,18 @@ module uart_tx
     buffer = 0;
   end
 
-  //----------------------------------------
+  always_comb begin : serial
+    serial_ret = buffer & 1;
+  end
 
-  function logic serial();
-    serial = buffer & 1;
-  endfunction
-  always_comb serial_ret = serial();
-
-  function logic cts();
-    cts = ((cursor == extra_stop_bits) && (cycle == 0)) ||
+  always_comb begin : cts
+    cts_ret = ((cursor == extra_stop_bits) && (cycle == 0)) ||
            (cursor < extra_stop_bits);
-  endfunction
-  always_comb cts_ret = cts();
+  end
 
-  function logic idle();
-    idle = (cursor == 0) && (cycle == 0);
-  endfunction
-  always_comb idle_ret = idle();
+  always_comb begin : idle
+    idle_ret = (cursor == 0) && (cycle == 0);
+  end
 
   always_ff @(posedge clock) begin : tick
     if (!tick_i_rstn) begin
@@ -72,7 +72,6 @@ module uart_tx
     end
   end
 
-  //----------------------------------------
 /*private:*/
   // 1 start bit, 8 data bits, 1 stop bit, 7 additional stop bits to guarantee
   // that recevier can resync between messages

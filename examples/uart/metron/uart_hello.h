@@ -8,11 +8,21 @@
 template <int repeat_msg = 0>
 class uart_hello {
 public:
-  uart_hello() { readmemh("examples/uart/message.hex", _memory, 0, 511); }
+  uart_hello() {
+    readmemh("examples/uart/message.hex", _memory, 0, 511);
+  }
 
-  logic<8> data() const { return _data; }
-  logic<1> req() const { return _state == SEND; }
-  logic<1> done() const { return _state == DONE; }
+  logic<8> data() const {
+    return _data;
+  }
+
+  logic<1> req() const {
+    return _state == SEND;
+  }
+
+  logic<1> done() const {
+    return _state == DONE;
+  }
 
   void tick(logic<1> i_rstn, logic<1> i_cts, logic<1> i_idle) {
     if (!i_rstn) {
@@ -36,8 +46,6 @@ public:
   }
 
 private:
-  //----------------------------------------
-
   static const int message_len = 512;
   static const int cursor_bits = clog2(message_len);
 

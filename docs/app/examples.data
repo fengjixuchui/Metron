@@ -1,29 +1,26 @@
 #include "metron_tools.h"
 
-// All the combos of tasks/funcs should work from ticks and tocks.
-
-// Yosys bug - fails to parse if we pass constants between the functions
-// https://github.com/YosysHQ/yosys/issues/3327
-
 class Module {
-public:
+  public:
 
-  logic<8> my_sig;
-
-  void tock(int z) {
-    logic<8> dummy = public_task(public_func(z));
+  // decl in for
+  int loop1() {
+    int x = 0;
+    for (int i = 0; i < 10; i++) {
+      x = x + i;
+    }
+    return x;
   }
 
-  logic<8> public_task(logic<8> x) {
-    my_sig = x + 7;
-    return 0;
+  // decl outside of for
+  int loop2() {
+    int x = 0;
+    int i;
+    for (i = 0; i < 10; i++) {
+      x = x + i;
+    }
+    return x;
   }
-
-  logic<8> public_func(logic<8> x) {
-    return my_reg1 + 1;
-  }
-
-  logic<8> my_reg1;
 };
 A trivial single-file, single-function, single-cycle RISC-V core.
 
@@ -46,7 +43,9 @@ class toplevel {
     readmemh(s, data_mem);
   }
 
-  void tock(logic<1> reset) { tick(reset); }
+  void tock(logic<1> reset) {
+    tick(reset);
+  }
 
   logic<32> bus_read_data;
   logic<32> bus_address;
@@ -295,12 +294,12 @@ class single_register {
 
 class example_data_memory_bus {
  public:
-  logic<32> address;
-  logic<32> read_data;
-  logic<32> write_data;
-  logic<4> byte_enable;
-  logic<1> read_enable;
-  logic<1> write_enable;
+  logic<32> address;     // in
+  logic<32> read_data;   // out
+  logic<32> write_data;  // in
+  logic<4> byte_enable;  // in
+  logic<1> read_enable;  // in
+  logic<1> write_enable; // in
 
  private:
   example_data_memory data_memory;
@@ -3741,9 +3740,17 @@ fpga via Icestorm.
 template <int cycles_per_bit = 4>
 class uart_rx {
 public:
-  logic<1> valid() { return _cursor == 1; }
-  logic<8> buffer() { return _buffer; }
-  logic<32> sum() { return _sum; }
+  logic<1> valid() {
+    return _cursor == 1;
+  }
+
+  logic<8> buffer() {
+    return _buffer;
+  }
+
+  logic<32> sum() {
+    return _sum;
+  }
 
   void tick(logic<1> i_rstn, logic<1> i_serial) {
     if (!i_rstn) {
@@ -3767,7 +3774,6 @@ public:
     }
   }
 
-  //----------------------------------------
  private:
   static const int cycle_bits = clog2(cycles_per_bit);
   static const int cycle_max = cycles_per_bit - 1;
@@ -3793,11 +3799,21 @@ public:
 template <int repeat_msg = 0>
 class uart_hello {
 public:
-  uart_hello() { readmemh("examples/uart/message.hex", _memory, 0, 511); }
+  uart_hello() {
+    readmemh("examples/uart/message.hex", _memory, 0, 511);
+  }
 
-  logic<8> data() const { return _data; }
-  logic<1> req() const { return _state == SEND; }
-  logic<1> done() const { return _state == DONE; }
+  logic<8> data() const {
+    return _data;
+  }
+
+  logic<1> req() const {
+    return _state == SEND;
+  }
+
+  logic<1> done() const {
+    return _state == DONE;
+  }
 
   void tick(logic<1> i_rstn, logic<1> i_cts, logic<1> i_idle) {
     if (!i_rstn) {
@@ -3821,8 +3837,6 @@ public:
   }
 
 private:
-  //----------------------------------------
-
   static const int message_len = 512;
   static const int cursor_bits = clog2(message_len);
 
@@ -3852,11 +3866,25 @@ private:
 template <int cycles_per_bit = 3, int repeat_msg = 0>
 class uart_top {
 public:
-  logic<1> serial() { return tx.serial(); }
-  logic<8> data() { return rx.buffer(); }
-  logic<1> valid() { return rx.valid(); }
-  logic<1> done() { return hello.done() && tx.idle(); }
-  logic<32> sum() { return rx.sum(); }
+  logic<1> serial() {
+    return tx.serial();
+  }
+
+  logic<8> data() {
+    return rx.buffer();
+  }
+
+  logic<1> valid() {
+    return rx.valid();
+  }
+
+  logic<1> done() {
+    return hello.done() && tx.idle();
+  }
+
+  logic<32> sum() {
+    return rx.sum();
+  }
 
   logic<1> tock(logic<1> i_rstn) {
     logic<8> hello_data = hello.data();
@@ -3894,18 +3922,16 @@ public:
     buffer = 0;
   }
 
-  //----------------------------------------
-
-  logic<1> serial() {
+  logic<1> serial() const {
     return buffer & 1;
   }
 
-  logic<1> cts() {
+  logic<1> cts() const {
     return ((cursor == extra_stop_bits) && (cycle == 0)) ||
            (cursor < extra_stop_bits);
   }
 
-  logic<1> idle() {
+  logic<1> idle() const {
     return (cursor == 0) && (cycle == 0);
   }
 
@@ -3938,7 +3964,6 @@ public:
     }
   }
 
-  //----------------------------------------
 private:
   // 1 start bit, 8 data bits, 1 stop bit, 7 additional stop bits to guarantee
   // that recevier can resync between messages
@@ -4133,6 +4158,30 @@ public:
 };
 #include "metron_tools.h"
 
+class Module {
+  public:
+
+  // decl in for
+  int loop1() {
+    int x = 0;
+    for (int i = 0; i < 10; i++) {
+      x = x + i;
+    }
+    return x;
+  }
+
+  // decl outside of for
+  int loop2() {
+    int x = 0;
+    int i;
+    for (i = 0; i < 10; i++) {
+      x = x + i;
+    }
+    return x;
+  }
+};
+#include "metron_tools.h"
+
 // Basic #defines should work as long as their contents are simultaneously
 // valid C++ and SV
 
@@ -4190,6 +4239,16 @@ public:
   }
 
   logic<1> my_sig;
+};
+// Prefixing a method with "tick_" should force it to be a tick if it would
+// otherwise be ambiguous
+
+class Adder {
+public:
+
+  int tick_add(int a, int b) {
+    return a + b;
+  }
 };
 All the header files in this directory _should_ be convertible to SystemVerilog.
 #include "metron_tools.h"
@@ -4452,6 +4511,21 @@ public:
 };
 #include "metron_tools.h"
 
+// Tick methods are not allowed to have a return value.
+// X Tick method Module.tick is not allowed to have a return value.
+
+class Module {
+ public:
+  logic<2> tick() {
+    my_reg = my_reg + 1;
+    return 8;
+  }
+
+ private:
+  logic<2> my_reg;
+};
+#include "metron_tools.h"
+
 // Calling tick() from tock() in the same module should work and should
 // generate bindings for the tick() call.
 
@@ -4623,10 +4697,12 @@ public:
     my_sig5 = 12 + my_func5(x);
   }
 
-  int my_func5(int x) { return x + 1; }
+private:
+  int my_func5(int x) {
+    return x + 1;
+  }
+public:
 
-
-  /*
   int my_sig6a;
   int tock_calls_tock(int x) {
     my_sig6a = 12;
@@ -4634,24 +4710,48 @@ public:
     return 0;
   }
 
+private:
   int my_sig6b;
   void tock_called_by_tock(int x) {
     my_sig6b = x;
   }
-  */
+public:
 
   //----------
 
   int my_reg1;
-  int my_reg2;
-
   void tick_no_params() {
     my_reg1 = my_reg1 + 1;
+    tick_called_by_tick(func_called_by_tick(1));
   }
 
+  int my_reg2;
   void tick_params(int x) {
     my_reg2 = my_reg2 + x;
   }
+
+  int my_reg3;
+  void tick_called_by_tick(int x) {
+    my_reg3 = my_reg3 + x;
+  }
+
+private:
+  int func_called_by_tick(int x) {
+    return x + 7;
+  }
+public:
+
+  void only_calls_private_tick() {
+    private_tick(17);
+  }
+
+private:
+  int my_reg4;
+  void private_tick(int x) {
+    my_reg4 = my_reg4 + x;
+  }
+
+
 };
 #include "metron_tools.h"
 
@@ -5161,6 +5261,11 @@ private:
   logic<8> my_reg;
   logic<8> my_reg2;
 };
+
+
+class Module {
+  public:
+};
 #include "metron_tools.h"
 
 // Port and function arg names can collide, the latter is disambiguated by its
@@ -5609,21 +5714,6 @@ class Module {
   void tick() { my_reg = my_reg + 1; }
 
   logic<8> my_reg;
-};
-#include "metron_tools.h"
-
-// Tick methods are not allowed to have a return value.
-// X Tick method Module.tick is not allowed to have a return value.
-
-class Module {
- public:
-  logic<2> tick() {
-    my_reg = my_reg + 1;
-    return 8;
-  }
-
- private:
-  logic<2> my_reg;
 };
 #include "metron_tools.h"
 

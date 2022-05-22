@@ -9,13 +9,13 @@
 
 module Module
 (
+  // test() ports
   output logic[7:0] test_ret
 );
 /*public:*/
 
-  function logic[7:0] test();
-    test = `MY_OTHER_CONSTANT;
-  endfunction
-  always_comb test_ret = test();
+  always_comb begin : test
+    test_ret = `MY_OTHER_CONSTANT;
+  end
 
 endmodule

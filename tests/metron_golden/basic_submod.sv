@@ -4,6 +4,7 @@
 
 module Submod
 (
+  // global clock
   input logic clock
 );
 /*public:*/
@@ -22,6 +23,7 @@ endmodule
 
 module Module
 (
+  // global clock
   input logic clock
 );
 /*public:*/
@@ -30,6 +32,7 @@ module Module
   end
 
   Submod submod(
+    // global clock
     .clock(clock)
   );
 

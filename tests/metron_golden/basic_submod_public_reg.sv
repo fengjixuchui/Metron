@@ -4,7 +4,9 @@
 
 module Submod
 (
+  // global clock
   input logic clock,
+  // output registers
   output logic[7:0] sub_reg
 );
 /*public:*/
@@ -23,21 +25,24 @@ endmodule
 
 module Module
 (
+  // global clock
   input logic clock,
+  // get_submod_reg() ports
   output logic[7:0] get_submod_reg_ret
 );
 /*public:*/
 
-  function logic[7:0] get_submod_reg();
-    get_submod_reg = submod_sub_reg;
-  endfunction
-  always_comb get_submod_reg_ret = get_submod_reg();
+  always_comb begin : get_submod_reg
+    get_submod_reg_ret = submod_sub_reg;
+  end
 
   always_comb begin : tock
   end
 
   Submod submod(
+    // global clock
     .clock(clock),
+    // output registers
     .sub_reg(submod_sub_reg)
   );
   logic[7:0] submod_sub_reg;

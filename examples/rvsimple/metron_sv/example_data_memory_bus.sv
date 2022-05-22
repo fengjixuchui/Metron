@@ -13,24 +13,36 @@
 
 module example_data_memory_bus
 (
+  // global clock
   input logic clock,
+  // input signals
   input logic[31:0] address,
-  output logic[31:0] read_data,
   input logic[31:0] write_data,
   input logic[3:0] byte_enable,
   input logic read_enable,
-  input logic write_enable
+  input logic write_enable,
+  // output signals
+  output logic[31:0] read_data
 );
  /*public:*/
+       // in
+     // out
+    // in
+    // in
+    // in
+   // in
 
  /*private:*/
   example_data_memory data_memory(
+    // global clock
     .clock(clock),
+    // input signals
     .address(data_memory_address),
-    .q(data_memory_q),
     .wren(data_memory_wren),
     .byteena(data_memory_byteena),
-    .data(data_memory_data)
+    .data(data_memory_data),
+    // output signals
+    .q(data_memory_q)
   );
   logic[rv_config::DATA_BITS - 2-1:0] data_memory_address;
   logic data_memory_wren;

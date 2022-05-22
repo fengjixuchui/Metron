@@ -2,14 +2,18 @@
 
 module toplevel
 (
+  // global clock
   input logic clock,
-  output logic[31:0] bus_read_data,
+  // output signals
   output logic[31:0] bus_address,
   output logic[31:0] bus_write_data,
+  output logic bus_write_enable,
+  // output registers
+  output logic[31:0] bus_read_data,
   output logic[3:0] bus_byte_enable,
   output logic bus_read_enable,
-  output logic bus_write_enable,
   output logic[31:0] pc,
+  // tock() ports
   input logic tock_reset
 );
  /*public:*/
@@ -25,7 +29,9 @@ module toplevel
     $readmemh(s, data_mem);
   end
 
-  always_comb begin : tock  end
+  always_comb begin : tock
+    tick_reset = tock_reset;
+  end
 
 
   //----------------------------------------

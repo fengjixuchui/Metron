@@ -5,13 +5,13 @@
 
 module Module
 (
+  // blah() ports
   output int blah_ret
 );
 /*public:*/
-  function int blah();
-    blah = 7;
-  endfunction
-  always_comb blah_ret = blah();
+  always_comb begin : blah
+    blah_ret = 7;
+  end
 endmodule
 
 `endif

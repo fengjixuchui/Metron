@@ -8,23 +8,35 @@
 module uart_hello
 #(parameter int repeat_msg = 0)
 (
+  // global clock
   input logic clock,
+  // data() ports
   output logic[7:0] data_ret,
+  // req() ports
   output logic req_ret,
+  // done() ports
   output logic done_ret,
+  // tick() ports
   input logic tick_i_rstn,
   input logic tick_i_cts,
   input logic tick_i_idle
 );
 /*public:*/
-  initial begin $readmemh("examples/uart/message.hex", _memory, 0, 511); end
+  initial begin
+    $readmemh("examples/uart/message.hex", _memory, 0, 511);
+  end
 
-  function logic[7:0] data();  data = _data; endfunction
-  always_comb data_ret = data();
-  function logic req();  req = _state == SEND; endfunction
-  always_comb req_ret = req();
-  function logic done();  done = _state == DONE; endfunction
-  always_comb done_ret = done();
+  always_comb begin : data
+    data_ret = _data;
+  end
+
+  always_comb begin : req
+    req_ret = _state == SEND;
+  end
+
+  always_comb begin : done
+    done_ret = _state == DONE;
+  end
 
   always_ff @(posedge clock) begin : tick
     if (!tick_i_rstn) begin
@@ -48,8 +60,6 @@ module uart_hello
   end
 
 /*private:*/
-  //----------------------------------------
-
   localparam int message_len = 512;
   localparam int cursor_bits = $clog2(message_len);
 

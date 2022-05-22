@@ -8,20 +8,30 @@
 module uart_rx
 #(parameter int cycles_per_bit = 4)
 (
+  // global clock
   input logic clock,
+  // valid() ports
   output logic valid_ret,
+  // buffer() ports
   output logic[7:0] buffer_ret,
+  // sum() ports
   output logic[31:0] sum_ret,
+  // tick() ports
   input logic tick_i_rstn,
   input logic tick_i_serial
 );
 /*public:*/
-  function logic valid();  valid = _cursor == 1; endfunction
-  always_comb valid_ret = valid();
-  function logic[7:0] buffer();  buffer = _buffer; endfunction
-  always_comb buffer_ret = buffer();
-  function logic[31:0] sum();  sum = _sum; endfunction
-  always_comb sum_ret = sum();
+  always_comb begin : valid
+    valid_ret = _cursor == 1;
+  end
+
+  always_comb begin : buffer
+    buffer_ret = _buffer;
+  end
+
+  always_comb begin : sum
+    sum_ret = _sum;
+  end
 
   always_ff @(posedge clock) begin : tick
     if (!tick_i_rstn) begin
@@ -46,7 +56,6 @@ module uart_rx
     end
   end
 
-  //----------------------------------------
  /*private:*/
   localparam int cycle_bits = $clog2(cycles_per_bit);
   localparam int cycle_max = cycles_per_bit - 1;

@@ -4,11 +4,14 @@
 
 module Submod
 (
+  // global clock
   input logic clock,
+  // tock() ports
   input logic[7:0] tock_arg
 );
 /*public:*/
   always_comb begin : tock
+    tick_arg = tock_arg;
   end
 /*private:*/
   always_ff @(posedge clock) begin : tick
@@ -22,6 +25,7 @@ endmodule
 
 module Module
 (
+  // global clock
   input logic clock
 );
 /*public:*/
@@ -36,7 +40,9 @@ module Module
   end
 
   Submod submod(
+    // global clock
     .clock(clock),
+    // tock() ports
     .tock_arg(submod_tock_arg)
   );
   logic[7:0] submod_tock_arg;

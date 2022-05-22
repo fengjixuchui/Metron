@@ -4,30 +4,31 @@
 
 module Submod1
 (
+  // add_one() ports
   input logic[7:0] add_one_a,
   output logic[7:0] add_one_ret
 );
 /*public:*/
-  function logic[7:0] add_one(logic[7:0] a);
-    add_one = a + 1;
-  endfunction
-  always_comb add_one_ret = add_one(add_one_a);
+  always_comb begin : add_one
+    add_one_ret = add_one_a + 1;
+  end
 endmodule
 
 module Submod2
 (
+  // add_two() ports
   input logic[7:0] add_two_a,
   output logic[7:0] add_two_ret
 );
 /*public:*/
-  function logic[7:0] add_two(logic[7:0] a);
-    add_two = a + 1;
-  endfunction
-  always_comb add_two_ret = add_two(add_two_a);
+  always_comb begin : add_two
+    add_two_ret = add_two_a + 1;
+  end
 endmodule
 
 module Module
 (
+  // tock() ports
   input logic[7:0] tock_old_counter,
   output logic[7:0] tock_ret
 );
@@ -45,6 +46,7 @@ module Module
 /*private:*/
 
   Submod1 submod1(
+    // add_one() ports
     .add_one_a(submod1_add_one_a),
     .add_one_ret(submod1_add_one_ret)
   );
@@ -52,6 +54,7 @@ module Module
   logic[7:0] submod1_add_one_ret;
 
   Submod2 submod2(
+    // add_two() ports
     .add_two_a(submod2_add_two_a),
     .add_two_ret(submod2_add_two_ret)
   );

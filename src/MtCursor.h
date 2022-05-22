@@ -72,15 +72,19 @@ struct MtCursor {
   CHECK_RETURN Err emit_submod_binding_fields(MnNode n);
   CHECK_RETURN Err emit_field_as_component(MnNode field_decl);
   CHECK_RETURN Err emit_component_port_list(MnNode n);
-  CHECK_RETURN Err emit_input_port_bindings(MnNode n);
+
+  CHECK_RETURN Err emit_local_call_arg_binding(MtMethod* method, MnNode param, MnNode val);
+  CHECK_RETURN Err emit_component_call_arg_binding(MnNode inst, MtMethod* method, MnNode param, MnNode val);
+
+  CHECK_RETURN Err emit_call_arg_bindings(MnNode n);
   CHECK_RETURN Err emit_method_ports(MtMethod* m);
-  CHECK_RETURN Err emit_method_bindings(MtMethod* m);
+  CHECK_RETURN Err emit_func_binding_vars(MtMethod* m);
   CHECK_RETURN Err emit_field_port(MtField* f);
   CHECK_RETURN Err emit_param_port(MtMethod* m, MnNode node_type, MnNode node_name);
   CHECK_RETURN Err emit_param_binding(MtMethod* m, MnNode node_type, MnNode node_name);
   CHECK_RETURN Err emit_return_port(MtMethod* m, MnNode node_type, MnNode node_name);
   CHECK_RETURN Err emit_return_binding(MtMethod* m, MnNode node_type, MnNode node_name);
-  CHECK_RETURN Err emit_module_port_list(MnNode class_body);
+  CHECK_RETURN Err emit_module_ports(MnNode class_body);
   CHECK_RETURN Err emit_trigger_call(MtMethod* m);
   //CHECK_RETURN Err emit_trigger_calls();
   CHECK_RETURN Err emit_param_as_field(MtMethod* method, MnNode n);
@@ -94,8 +98,8 @@ struct MtCursor {
   CHECK_RETURN Err emit_func_as_always_comb(MnNode n);
   CHECK_RETURN Err emit_func_as_always_ff(MnNode n);
 
-  CHECK_RETURN Err emit_trigger_comb(MnNode n);
-  CHECK_RETURN Err emit_trigger_ff(MnNode n);
+  CHECK_RETURN Err emit_func_trigger_comb(MnNode n);
+  CHECK_RETURN Err emit_func_trigger_ff(MnNode n);
 
   // Per-symbol emit()s.
   // clang-format off
@@ -119,6 +123,7 @@ struct MtCursor {
   CHECK_RETURN Err emit_sym_field_declaration_list(MnNode n, bool is_struct);
   CHECK_RETURN Err emit_sym_field_expression(MnNode n);
   CHECK_RETURN Err emit_sym_field_identifier(MnNode n);
+  CHECK_RETURN Err emit_sym_for_statement(MnNode n);
   CHECK_RETURN Err emit_sym_function_definition(MnNode n);
   CHECK_RETURN Err emit_sym_identifier(MnNode n);
   CHECK_RETURN Err emit_sym_if_statement(MnNode n);

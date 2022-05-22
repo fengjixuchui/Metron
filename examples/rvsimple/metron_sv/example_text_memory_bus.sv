@@ -13,14 +13,18 @@
 
 module example_text_memory_bus
 (
+  // input signals
   input logic[31:0] address,
+  // output signals
   output logic[31:0] read_data
 );
  /*public:*/
 
  /*private:*/
   example_text_memory text_memory(
+    // input signals
     .address(text_memory_address),
+    // output signals
     .q(text_memory_q)
   );
   logic[rv_config::TEXT_BITS - 2-1:0] text_memory_address;

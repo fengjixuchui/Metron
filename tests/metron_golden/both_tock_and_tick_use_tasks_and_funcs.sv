@@ -7,8 +7,11 @@
 
 module Module
 (
+  // global clock
   input logic clock,
+  // output signals
   output logic[7:0] my_sig,
+  // tock() ports
   input int tock_z
 );
 /*public:*/
@@ -18,6 +21,7 @@ module Module
     logic[7:0] dummy;
     public_task_x = public_func(tock_z);
     dummy = public_task_ret;
+    tick_w = tock_z;
   end
 
   always_comb begin : public_task

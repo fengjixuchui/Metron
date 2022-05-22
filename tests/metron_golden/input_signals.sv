@@ -5,10 +5,15 @@
 
 module Submod
 (
+  // global clock
   input logic clock,
+  // input signals
   input logic[7:0] i_signal,
+  // output signals
   output logic[7:0] o_signal,
+  // output registers
   output logic[7:0] o_reg,
+  // tock() ports
   input logic[7:0] tock_i_param,
   output logic[7:0] tock_ret
 );
@@ -29,7 +34,9 @@ endmodule
 
 module Module
 (
+  // global clock
   input logic clock,
+  // output registers
   output logic[7:0] my_reg
 );
 /*public:*/
@@ -52,10 +59,15 @@ module Module
   logic[7:0] my_sig;
 
   Submod submod(
+    // global clock
     .clock(clock),
+    // input signals
     .i_signal(submod_i_signal),
+    // output signals
     .o_signal(submod_o_signal),
+    // output registers
     .o_reg(submod_o_reg),
+    // tock() ports
     .tock_i_param(submod_tock_i_param),
     .tock_ret(submod_tock_ret)
   );
