@@ -39,15 +39,25 @@ std::vector<std::string> split_path(const std::string& input) {
   return result;
 }
 
+std::string join_path(std::vector<std::string>& path) {
+  std::string result;
+  for (auto& s : path) {
+    if (result.size()) result += "/";
+    result += s;
+  }
+  return result;
+}
+
 //------------------------------------------------------------------------------
 
 void mkdir_all(const std::vector<std::string>& full_path) {
   std::string temp;
-  for (size_t i = 0; i < full_path.size() - 1; i++) {
+  for (size_t i = 0; i < full_path.size(); i++) {
     if (temp.size()) temp += "/";
     temp += full_path[i];
     //printf("making dir %s\n", temp.c_str());
-    plat_mkdir(temp.c_str());
+    int result = plat_mkdir(temp.c_str());
+    //printf("mkdir result %d\n", result);
   }
 }
 
@@ -64,67 +74,64 @@ int main(int argc, char** argv) {
       " ##  ##  ## ##         ##    ##   ## ##    ## ##  ## ## \n"
       " ##      ## #######    ##    ##   ##  ######  ##   #### \n"
       "                                                        \n"
-      "            a C++ to SystemVerilog transpiler           \n";
+      "            a C++ to SystemVerilog Translator           \n";
 
   CLI::App app{banner};
 
+  std::string src_name;
+  std::string dst_name;
+  bool verbose = false;
   bool quiet = false;
   bool echo = false;
   bool dump = false;
-  bool save = false;
-  bool verbose = false;
-  std::string src_root;
-  std::string out_root;
-  std::vector<std::string> source_names;
+  bool monochrome = false;
 
   // clang-format off
-  app.add_flag  ("-q,--quiet",    quiet,        "Quiet mode");
-  app.add_flag  ("-v,--verbose",  verbose,      "Print detailed stats about the source modules.");
-  app.add_flag  ("-s,--save",     save,         "Save converted source. If not specified, will only check inputs for convertibility.");
-  app.add_flag  ("-e,--echo",     echo,         "Echo the converted source back to the terminal, with color-coding.");
-  app.add_flag  ("--dump",        dump,         "Dump the syntax tree of the source file(s) to the console.");
-  app.add_option("-r,--src_root", src_root,     "Root directory of the source to convert");
-  app.add_option("-o,--out_root", out_root,     "Root directory used for output files. If not specified, will use source root.");
-  app.add_option("headers",       source_names, "List of .h files to convert from C++ to SystemVerilog");
+  auto src_opt     = app.add_option("-c,--convert",    src_name,     "Full path to source file to translate from C++ to SystemVerilog");
+  auto dst_opt     = app.add_option("-o,--output",     dst_name,     "Output file path. If not specified, will only check the source for convertibility.");
+  auto verbose_opt = app.add_flag  ("-v,--verbose",    verbose,      "Print detailed stats about the source modules.");
+  auto quiet_opt   = app.add_flag  ("-q,--quiet",      quiet,        "Quiet mode");
+  auto echo_opt    = app.add_flag  ("-e,--echo",       echo,         "Echo the converted source back to the terminal, with color-coding.");
+  auto dump_opt    = app.add_flag  ("-d,--dump",       dump,         "Dump the syntax tree of the source file(s) to the console.");
+  auto mono_opt    = app.add_flag  ("-m,--monochrome", monochrome,   "Monochrome mode, no color-coding");
   // clang-format on
+
+  src_opt->check(CLI::ExistingFile);
 
   CLI11_PARSE(app, argc, argv);
 
   if (quiet) TinyLog::get().mute();
+  if (monochrome) TinyLog::get().mono();
 
   //----------
   // Startup info
 
   LOG_B("Metron v0.0.1\n");
-  LOG_B("Quiet   %d\n", quiet);
-  LOG_B("Echo    %d\n", echo);
-  LOG_B("Save    %d\n", save);
-  LOG_B("Verbose %d\n", verbose);
-  LOG_B("Source root '%s'\n", src_root.empty() ? "<empty>" : src_root.c_str());
-  LOG_B("Output root '%s'\n", out_root.empty() ? "<empty>" : out_root.c_str());
-
-  for (auto& name : source_names) {
-    LOG_B("Header %s\n", name.c_str());
-  }
+  LOG_B("Source file '%s'\n", src_name.empty() ? "<empty>" : src_name.c_str());
+  LOG_B("Output file '%s'\n", dst_name.empty() ? "<empty>" : dst_name.c_str());
+  LOG_B("Verbose    %d\n", verbose);
+  LOG_B("Quiet      %d\n", quiet);
+  LOG_B("Echo       %d\n", echo);
+  LOG_B("Dump       %d\n", dump);
+  LOG_B("Monochrome %d\n", monochrome);
   LOG_B("\n");
 
   //----------
   // Load all source files.
 
   Err err;
-
-  if (src_root.empty()) {
-    LOG_R("No source root specified, using current directory\n");
-    src_root = ".";
-  }
-
   MtModLibrary lib;
-  lib.add_search_path(src_root);
+  MtSourceFile* source = nullptr;
 
-  LOG_B("Loading source files\n");
-  for (auto& name : source_names) {
-    MtSourceFile* source;
-    err << lib.load_source(name.c_str(), source, verbose);
+  lib.add_search_path(".");
+
+  {
+    LOG_B("Loading source file %s\n", src_name.c_str());
+    auto src_path = split_path(src_name);
+    src_path.pop_back();
+    auto search_path = join_path(src_path);
+    lib.add_search_path(search_path);
+    err << lib.load_source(src_name.c_str(), source, verbose);
   }
 
   if (err.has_err()) {
@@ -134,9 +141,7 @@ int main(int argc, char** argv) {
   }
 
   if (dump) {
-    for (auto& source_file : lib.source_files) {
-      source_file->root_node.dump_tree(0, 0, 255);
-    }
+    source->root_node.dump_tree(0, 0, 255);
   }
 
   //----------------------------------------
@@ -157,6 +162,22 @@ int main(int argc, char** argv) {
 
   for (auto mod : lib.modules) {
     err << mod->collect_parts();
+  }
+
+  //----------------------------------------
+  // Give all fields pointers to their type struct or mod
+
+  for (auto m : lib.modules) {
+    for (auto f : m->all_fields) {
+      f->_type_mod = lib.get_module(f->type_name());
+      f->_type_struct = lib.get_struct(f->type_name());
+    }
+  }
+
+  for (auto s : lib.structs) {
+    for (auto f : s->fields) {
+      f->_type_struct = lib.get_struct(f->type_name());
+    }
   }
 
   //----------------------------------------
@@ -181,13 +202,13 @@ int main(int argc, char** argv) {
   // Trace
 
   for (auto mod : lib.modules) {
-    if (verbose) {
-      LOG_G("Tracing %s\n", mod->cname());
-      LOG_INDENT();
-    }
+    LOG_B("Tracing %s\n", mod->cname());
+    LOG_INDENT();
     mod->ctx = new MtContext(mod);
     mod->ctx->instantiate();
+
     MtTracer tracer(&lib, mod->ctx, verbose);
+
     for (auto method : mod->all_methods) {
       if (method->is_constructor()) continue;
       if (method->internal_callers.size()) continue;
@@ -195,6 +216,9 @@ int main(int argc, char** argv) {
         LOG_G("Tracing %s.%s\n", mod->cname(), method->cname());
       }
       err << tracer.trace_method(mod->ctx, method);
+      if (verbose) {
+        mod->ctx->dump_ctx_tree();
+      }
     }
     mod->ctx->assign_struct_states();
     if (verbose) {
@@ -208,9 +232,7 @@ int main(int argc, char** argv) {
       lib.teardown();
       return -1;
     }
-    if (verbose) {
-      LOG_DEDENT();
-    }
+    LOG_DEDENT();
   }
 
   //----------
@@ -286,10 +308,10 @@ int main(int argc, char** argv) {
 
   for (auto mod : lib.modules) {
     for (auto method : mod->all_methods) {
-      if (method->name().starts_with("tick") && !method->in_tick) {
+      if (method->name().starts_with("tick") && !method->is_tick_) {
         err << ERR("Method %s labeled 'tick' but is not a tick.\n", method->cname());
       }
-      if (method->name().starts_with("tock") && !method->in_tock) {
+      if (method->name().starts_with("tock") && !method->is_tock_) {
         err << ERR("Method %s labeled 'tock' but is not a tock.\n", method->cname());
       }
     }
@@ -334,11 +356,11 @@ int main(int argc, char** argv) {
   //----------
   // Emit all modules.
 
-  for (auto& source_file : lib.source_files) {
-    LOG_G("Converting %s to SystemVerilog\n", source_file->full_path.c_str());
+ {
+    LOG_G("Converting %s to SystemVerilog\n", src_name.c_str());
 
     std::string out_string;
-    MtCursor cursor(&lib, source_file, nullptr, &out_string);
+    MtCursor cursor(&lib, source, nullptr, &out_string);
     cursor.echo = echo && !quiet;
 
     if (echo) LOG_G("----------------------------------------\n\n");
@@ -351,26 +373,21 @@ int main(int argc, char** argv) {
       return -1;
     }
 
-    if (save) {
+    if (dst_name.size()) {
       // Save translated source to output directory, if there is one.
-      if (out_root.empty()) {
-        LOG_Y("No output root directory specified, using source root.\n");
-        out_root = src_root;
-      }
 
-      auto out_name = source_file->filename;
-      out_name.resize(out_name.size() - 2);
-      auto out_path = out_root + "/" + out_name + ".sv";
+      LOG_G("Saving %s\n", dst_name.c_str());
 
-      LOG_G("Saving %s\n", out_path.c_str());
-      mkdir_all(split_path(out_path));
+      auto dst_path = split_path(dst_name);
+      dst_path.pop_back();
+      mkdir_all(dst_path);
 
-      FILE* out_file = fopen(out_path.c_str(), "wb");
+      FILE* out_file = fopen(dst_name.c_str(), "wb");
       if (!out_file) {
-        LOG_R("ERROR Could not open %s for output\n", out_path.c_str());
+        LOG_R("ERROR Could not open %s for output\n", dst_name.c_str());
       } else {
         // Copy the BOM over if needed.
-        if (source_file->use_utf8_bom) {
+        if (source->use_utf8_bom) {
           uint8_t bom[3] = {239, 187, 191};
           fwrite(bom, 1, 3, out_file);
         }

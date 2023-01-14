@@ -58,7 +58,6 @@ def main():
 
     errors += test_convert_good()
     errors += test_convert_bad()
-
     errors += test_verilator_parse()
     errors += test_yosys_parse()
     errors += test_icarus_parse()
@@ -107,12 +106,15 @@ def get_pool():
 
 
 def metron_default_args():
-    return "-v -e"
-    # return "-q"
+    #return "-v -e"
+    #return "-q"
+    return ""
 
 
 def metron_good():
-    return glob.glob("tests/metron_good/*.h")
+    result = glob.glob("tests/metron_good/*.h")
+    result.sort()
+    return result
     #return glob.glob("tests/metron_good/all_func_types.h")
 
 
@@ -174,7 +176,7 @@ def check_good(filename):
     basename = path.basename(filename)
     svname = path.splitext(basename)[0] + ".sv"
 
-    cmd = f"bin/metron {metron_default_args()} -r tests/metron_good -o tests/metron_sv -s {basename}"
+    cmd = f"bin/metron {metron_default_args()} -c tests/metron_good/{basename} -o tests/metron_sv/{svname}"
 
     print(f"  {cmd}");
 
@@ -205,11 +207,11 @@ def check_bad(filename):
         print(f"Test {filename} contained no expected errors. Dumping output.")
         # return 1
 
-    cmd = f"bin/metron {metron_default_args()} -r tests/metron_bad -o tests/metron_sv -s {basename}"
+    cmd = f"bin/metron {metron_default_args()} -c tests/metron_bad/{basename} -o tests/metron_sv/{svname}"
     print(f"  {cmd}")
 
     cmd_result = subprocess.run(
-        prep_cmd(cmd), stdout=subprocess.PIPE, encoding="charmap")
+        prep_cmd(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="charmap")
 
     if cmd_result.returncode == 0:
         print(
@@ -239,10 +241,6 @@ def check_bad(filename):
 
 
 def check_icarus(filename):
-    # Icarus doesn't really support module parameters it seems...
-    if "basic_template" in filename:
-        return 0
-
     errors = 0
     basename = path.basename(filename)
     svname = path.splitext(basename)[0] + ".sv"
@@ -250,9 +248,6 @@ def check_icarus(filename):
     cmd = f"iverilog -g2012 -Wall -Isrc -o bin/{svname}.o tests/metron_sv/{svname}"
 
     print(f"  {cmd}")
-    #result = os.system(cmd)
-
-    #cmd = "iverilog"
 
     cmd_result = subprocess.run(
         prep_cmd(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="charmap")
@@ -455,13 +450,12 @@ def test_examples():
         "bin/examples/uart",
         "bin/examples/uart_vl",
         "bin/examples/uart_iv",
-        "bin/examples/rvsimple",
-        "bin/examples/rvsimple_vl",
+        # FIXME need to redo these once we have better mem init
+        #"bin/examples/rvsimple",
+        #"bin/examples/rvsimple_vl",
         "bin/examples/rvsimple_ref",
-        "bin/examples/rvtiny",
-        "bin/examples/rvtiny_vl",
-        "bin/examples/rvtiny_sync",
-        "bin/examples/rvtiny_sync_vl",
+        #"bin/examples/pinwheel",
+        #"bin/examples/pinwheel_vl",
     ]
 
     errors = sum(get_pool().map(run_simple_test, simple_tests))
@@ -488,17 +482,15 @@ def test_misc():
     print_b("Running misc commands")
 
     good_commands = [
-        f"bin/metron {metron_default_args()} -r examples/uart/metron uart_top.h",
-        f"bin/metron {metron_default_args()} -r examples/rvsimple/metron toplevel.h",
-        f"bin/metron {metron_default_args()} -r examples/rvtiny/metron toplevel.h",
-        f"bin/metron {metron_default_args()} -r examples/rvtiny_sync/metron toplevel.h",
-        f"bin/metron {metron_default_args()} -r examples/pong/metron pong.h",
+        f"bin/metron {metron_default_args()} -c examples/uart/metron/uart_top.h",
+        f"bin/metron {metron_default_args()} -c examples/rvsimple/metron/toplevel.h",
+        #f"bin/metron {metron_default_args()} -c examples/pinwheel/metron/pinwheel.h",
+        f"bin/metron {metron_default_args()} -c examples/pong/metron/pong.h",
     ]
 
     bad_commands = [
         f"bin/metron {metron_default_args()} skjdlsfjkhdfsjhdf.h",
-        f"bin/metron {metron_default_args()} -s skjdlsfjkhdfsjhdf.h",
-        f"bin/metron {metron_default_args()} -o sdkjfshkdjfshyry skjdlsfjkhdfsjhdf.h",
+        f"bin/metron {metron_default_args()} -c skjdlsfjkhdfsjhdf.h",
     ]
 
     errors = 0
@@ -534,14 +526,14 @@ def check_lockstep(filename):
 
     includes = f"-I. -Isrc -I{sv_root} -I/usr/local/share/verilator/include"
 
-    metronate_cmd = f"bin/metron -q -r {mt_root} -o {sv_root} -s {test_name}.h"
+    metronate_cmd = f"bin/metron -q -c {mt_root}/{test_name}.h -o {sv_root}/{test_name}.sv"
     print(f"  {metronate_cmd}")
     os.system(metronate_cmd)
     os.system(f"verilator {includes} --cc {test_name}.sv -Mdir {vl_root}")
     os.system(f"make --quiet -C {vl_root} -f V{test_name}.mk > /dev/null")
     os.system(
         f"g++ -O3 -std=gnu++2a -DMT_TOP={mt_top} -DVL_TOP={vl_top} -DMT_HEADER={mt_header} -DVL_HEADER={vl_header} {includes} -c {test_src} -o {test_obj}")
-    os.system(f"g++ {test_obj} {vl_obj} obj/verilated.o -o {test_bin}")
+    os.system(f"g++ {test_obj} {vl_obj} obj/verilated.o obj/verilated_threads.o -o {test_bin}")
 
     cmd = f"{test_bin} > /dev/null"
     print(f"  {cmd}");

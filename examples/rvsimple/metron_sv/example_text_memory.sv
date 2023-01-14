@@ -10,8 +10,7 @@
 `include "constants.sv"
 `include "metron_tools.sv"
 
-module example_text_memory
-(
+module example_text_memory (
   // input signals
   input logic[rv_config::TEXT_BITS - 2-1:0] address,
   // output signals
@@ -19,9 +18,9 @@ module example_text_memory
 );
  /*public:*/
   initial begin
-    string s;
-    $value$plusargs("text_file=%s", s);
-    $readmemh(s, mem);
+    //std::string s;
+    //value_plusargs("text_file=%s", s);
+    //readmemh(s, mem);
   end
 
   always_comb begin : tock_q q = mem[address]; end

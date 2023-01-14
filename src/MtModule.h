@@ -31,6 +31,7 @@ struct MtModule {
 
   MtMethod* get_method(const std::string& name);
   MtField* get_field(const std::string& name);
+  MtField* get_field(MnNode node);
   MtField* get_component(const std::string& name);
   MtField* get_enum(const std::string& name);
 
@@ -98,6 +99,10 @@ struct MtModule {
   std::vector<MtField*> components;
   std::vector<MtField*> private_signals;
   std::vector<MtField*> private_registers;
+
+  std::vector<MtField*> dead_fields;
+
+  bool is_port(const std::string& name) const;
 };
 
 //------------------------------------------------------------------------------

@@ -30,7 +30,7 @@ struct MtField {
     return _state == CTX_REGISTER || _state == CTX_MAYBE;
   }
   bool is_signal() const { return _state == CTX_OUTPUT || _state == CTX_SIGNAL; }
-
+  bool is_dead() const { return _state == CTX_NONE; }
   bool is_public_input() const { return _public && is_input(); }
   bool is_public_signal() const { return _public && is_signal(); }
   bool is_public_register() const { return _public && is_register(); }
@@ -41,6 +41,8 @@ struct MtField {
   MnNode get_decl_node() const { return _node.get_field(field_declarator); }
 
   bool is_enum() { return _node.sym == sym_enum_specifier; }
+
+  MtField* get_field(MnNode node);
 
   void dump() const;
 

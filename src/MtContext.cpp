@@ -284,10 +284,13 @@ void MtContext::instantiate(MtStruct *_struct, MtContext *parent) {
 //------------------------------------------------------------------------------
 
 void MtContext::assign_struct_states() {
+  for (auto c : children) {
+    c->assign_struct_states();
+  }
+
   if (type_struct) {
     log_top.state = children[0]->log_top.state;
     for (auto c : children) {
-      c->assign_struct_states();
       auto result = merge_branch(log_top.state, c->log_top.state);
       log_top.state = result;
     }
@@ -330,6 +333,27 @@ MtContext *MtContext::resolve(const std::string &_name) {
   }
 
   return result;
+}
+
+MtContext *MtContext::resolve(MnNode node) {
+
+  if (node.sym == sym_identifier || node.sym == alias_sym_field_identifier) {
+    return resolve(node.text());
+  }
+  else if (node.sym == sym_field_expression) {
+    auto lhs = node.get_field(field_argument);
+    auto lhs_context = resolve(lhs);
+    if (lhs_context) {
+      auto rhs = node.get_field(field_field);
+      return lhs_context->resolve(rhs);
+    }
+    else {
+      return nullptr;
+    }
+  }
+  else {
+    return nullptr;
+  }
 }
 
 //------------------------------------------------------------------------------

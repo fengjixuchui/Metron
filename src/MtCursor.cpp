@@ -236,10 +236,21 @@ CHECK_RETURN Err MtCursor::comment_out(MnNode n) {
   Err err = emit_ws_to(n);
 
   if (cursor != n.start()) err << ERR("comment_out did not start with cursor at node start\n");
+
   err << emit_print("/*");
-  err << emit_text(n);
+
+  auto start = n.start();
+  auto end1 = n.end();
+  auto end2 = end1;
+
+  // If the block ends in a newline, put the comment terminator _before_ the newline
+  if (end1[-1] == '\n') end1--;
+
+  err << emit_span(start, end1);
   err << emit_print("*/");
-  if (cursor != n.end()) err << ERR("comment_out did not leave cursor at node end\n");
+  if (end1 != end2)err << emit_span(end1, end2);
+
+  cursor = n.end();
 
   return err;
 }
@@ -375,32 +386,35 @@ CHECK_RETURN Err MtCursor::emit_sym_preproc_include(MnNode n) {
 CHECK_RETURN Err MtCursor::emit_sym_assignment_expression(MnNode node) {
   Err err = emit_ws_to(sym_assignment_expression, node);
 
-  bool left_is_field = false;
+  auto lhs = node.get_field(field_left);
+  auto op  = node.get_field(field_operator).text();
+  auto rhs = node.get_field(field_right);
+  bool left_is_field = current_mod->get_field(lhs) != nullptr;
+
+  bool is_compound = op != "=";
+
 
   for (auto child : node) {
     switch (child.field) {
-      case field_left:
-        err << emit_expression(child);
-        left_is_field = current_mod->get_field(child.text()) != nullptr;
-        break;
+      case field_left: err << emit_expression(child); break;
       case field_operator:
-        if (child.text() != "=") {
-          err << ERR("emit_sym_assignment_expression() - Node is not '='\n");
-          child.error();
-        }
         // There may not be a method if we're in an enum initializer list.
-        if (current_method && current_method->in_tick && left_is_field) {
+        if (current_method && current_method->is_tick_ && left_is_field) {
           err << emit_replacement(child, "<=");
         } else {
-          err << emit_text(child);
+          err << emit_replacement(child, "=");
         }
+        if (is_compound) {
+          push_cursor(lhs);
+          err << emit_print(" ");
+          err << emit_expression(lhs);
+          err << emit_print(" %c", op[0]);
+          pop_cursor(lhs);
+        }
+
         break;
-      case field_right:
-        err << emit_expression(child);
-        break;
-      default:
-        err << emit_default(child);
-        break;
+      case field_right: err << emit_expression(child); break;
+      default: err << emit_default(child); break;
     }
   }
 
@@ -416,6 +430,25 @@ CHECK_RETURN Err MtCursor::emit_static_bit_extract(MnNode call, int bx_width) {
 
   auto arg0 = call.get_field(field_arguments).named_child(0);
   auto arg1 = call.get_field(field_arguments).named_child(1);
+
+  auto arg0_text = arg0.text();
+
+  /*
+  if (current_method->has_param(arg0_text)) {
+    //printf("bit extract!\n");
+    arg0_text = std::string(current_method->cname()) + "_" + arg0_text;
+  }
+  */
+
+  /*
+  auto arg0_field = current_mod->get_field(arg0_text);
+  if (arg0_field) {
+    if (arg0_field->is_input()) {
+      printf("INPUT FIELD %s!\n", arg0_field->cname());
+    }
+  }
+  */
+
 
   if (arg_count == 1) {
     if (arg0.sym == sym_number_literal) {
@@ -448,28 +481,40 @@ CHECK_RETURN Err MtCursor::emit_static_bit_extract(MnNode call, int bx_width) {
   } else if (arg_count == 2) {
     // Slicing logic array - foo[7:2]
 
-    if (arg1.sym == sym_number_literal) {
-      // Slice at offset
-      if (bx_width == 1) {
-        err << emit_replacement(call, "%s[%s]", arg0.text().c_str(),
-                                arg1.text().c_str());
-      } else {
-        int offset = atoi(arg1.start());
-        err << emit_replacement(call, "%s[%d:%d]", arg0.text().c_str(),
-                                bx_width - 1 + offset, offset);
-      }
-    } else {
-      if (bx_width == 1) {
-        err << emit_replacement(call, "%s[%s]", arg0.text().c_str(),
-                                arg1.text().c_str());
-        ;
-      } else {
-        err << emit_replacement(call, "%s[%d + %s : %s]", arg0.text().c_str(),
-                                bx_width - 1, arg1.text().c_str(),
-                                arg1.text().c_str());
-      }
+    if (bx_width == 1) {
+      // b1(foo, 7) -> foo[7]
+      cursor = arg0.start();
+      err << emit_expression(arg0);
+      err << emit_print("[");
+      cursor = arg1.start();
+      err << emit_expression(arg1);
+      err << emit_print("]");
+      cursor = call.end();
     }
+    else {
+      cursor = arg0.start();
+      err << emit_expression(arg0);
+      err << emit_print("[");
 
+      if (arg1.sym == sym_number_literal) {
+        // Static size slice, static offset
+        // b6(foo, 2) -> foo[7:2]
+        int offset = atoi(arg1.start());
+        err << emit_print("%d:%d", bx_width - 1 + offset, offset);
+      } else {
+        // Static size slice, dynamic offset
+        // b6(foo, offset) -> foo[5 + offset:offset]
+        err << emit_print("%d + ", bx_width - 1);
+        cursor = arg1.start();
+        err << emit_expression(arg1);
+        err << emit_print(" : ");
+        cursor = arg1.start();
+        err << emit_expression(arg1);
+      }
+      err << emit_print("]");
+      cursor = call.end();
+
+    }
   } else {
     err << ERR("emit_static_bit_extract got > 1 args\n");
   }
@@ -487,6 +532,15 @@ CHECK_RETURN Err MtCursor::emit_dynamic_bit_extract(MnNode call,
 
   auto arg0 = call.get_field(field_arguments).named_child(0);
   auto arg1 = call.get_field(field_arguments).named_child(1);
+
+  auto arg0_text = arg0.text();
+
+  auto arg0_field = current_mod->get_field(arg0_text);
+  if (arg0_field) {
+    if (arg0_field->is_input()) {
+      printf("INPUT FIELD %s!\n", arg0_field->cname());
+    }
+  }
 
   if (arg_count == 1) {
     // Non-literal size-casting expression - bits'(expression)
@@ -653,6 +707,9 @@ CHECK_RETURN Err MtCursor::emit_sym_call_expression(MnNode n) {
   } else if (func_name == "sign_extend") {
     err << emit_replacement(func, "$signed");
     err << emit_sym_argument_list(args);
+  } else if (func_name == "zero_extend") {
+    err << emit_replacement(func, "$unsigned");
+    err << emit_sym_argument_list(args);
   }
   else if (func_name == "bx") {
     // Bit extract.
@@ -810,7 +867,6 @@ CHECK_RETURN Err MtCursor::emit_hoisted_decls(MnNode n) {
 
       if (is_localparam) {
         // fixme?
-        n.dump_tree();
         err << ERR("FIXME - emit_hoisted_decls emitting a localparam?\n");
       } else {
         cursor = c.start();
@@ -939,10 +995,30 @@ CHECK_RETURN Err MtCursor::emit_call_arg_bindings(MnNode n) {
 CHECK_RETURN Err MtCursor::emit_func_as_init(MnNode n) {
   Err err;
 
+  n.dump_tree();
+
+  /*
+  if (current_mod->constructor && current_mod->constructor->param_nodes.size()) {
+    MtCursor sub_cursor = *this;
+    for (const auto& c : current_mod->constructor->param_nodes) {
+      err << sub_cursor.emit_print("parameter %s", c.name4().c_str());
+      err << sub_cursor.emit_print(";");
+      err << sub_cursor.emit_newline();
+    }
+  }
+  */
+
   auto func_decl = n.get_field(field_declarator);
+  auto func_init = n.child_by_sym(sym_field_initializer_list);
   auto func_body = n.get_field(field_body);
 
+  auto func_params = func_decl.get_field(field_parameters);
+
+  err << emit_ws_to(func_decl);
+  err << emit_module_parameter_list(func_params);
+
   err << emit_replacement(func_decl, "initial");
+  if (func_init) err << comment_out(func_init);
   err << emit_sym_compound_statement(func_body, "begin", "end");
   assert(cursor == n.end());
 
@@ -1024,23 +1100,24 @@ CHECK_RETURN Err MtCursor::emit_func_as_always_comb(MnNode n) {
 CHECK_RETURN Err MtCursor::emit_func_as_always_ff(MnNode n) {
   Err err;
 
-  auto func_ret = n.get_field(field_type);
   auto func_decl = n.get_field(field_declarator);
-  auto func_body = n.get_field(field_body);
   auto func_params = func_decl.get_field(field_parameters);
 
   auto old_replacements = id_replacements;
   for (auto c : func_params) {
-    if (!c.is_named()) continue;
-    id_replacements[c.name4()] = func_decl.name4() + "_" + c.name4();
+    if (c.sym == sym_parameter_declaration) {
+      id_replacements[c.name4()] = func_decl.name4() + "_" + c.name4();
+    }
   }
 
-  err << emit_print("always_ff @(posedge clock) begin : %s", func_decl.name4().c_str());
-  err << skip_over(func_ret);
-  err << skip_ws();
-  err << skip_over(func_decl);
-  err << skip_ws();
-  err << emit_sym_compound_statement(func_body, "", "end");
+  for (auto c : n) {
+    switch(c.field) {
+    case field_type:       err << emit_replacement(c, "always_ff @(posedge clock) begin : %s", func_decl.name4().c_str()); break;
+    case field_declarator: err << skip_over(c); break;
+    case field_body:       err << emit_sym_compound_statement(c, "", "end"); break;
+    default:               err << emit_default(c); break;
+    }
+  }
 
   id_replacements = old_replacements;
 
@@ -1115,12 +1192,6 @@ CHECK_RETURN Err MtCursor::emit_sym_function_definition(MnNode n) {
 
   if (current_method->needs_binding) {
     err << emit_func_binding_vars(current_method);
-  }
-
-  // not currently using this
-  if (current_method->needs_trigger) {
-    if (current_method->in_tick) err << emit_func_trigger_ff(n);
-    if (current_method->in_func) err << emit_func_trigger_comb(n);
   }
 
   //----------
@@ -1730,6 +1801,12 @@ CHECK_RETURN Err MtCursor::emit_declarator(MnNode node, bool elide_value) {
         err << skip_over(node.child(2));
       }
       break;
+    case sym_pointer_declarator: {
+      auto decl2 = node.get_field(field_declarator);
+      cursor = decl2.start();
+      err << emit_declarator(decl2, elide_value);
+      break;
+    }
     default:
       err << emit_default(node);
       break;
@@ -1741,26 +1818,54 @@ CHECK_RETURN Err MtCursor::emit_declarator(MnNode node, bool elide_value) {
 //------------------------------------------------------------------------------
 // FIXME break these out
 
-CHECK_RETURN Err MtCursor::emit_declaration(MnNode node) {
+CHECK_RETURN Err MtCursor::emit_parameter_declaration(MnNode node) {
   Err err = emit_ws_to(node);
+  assert(node.sym == sym_parameter_declaration);
 
-  node.dump_tree();
+  err << emit_type(node.child(0));
+  err << emit_identifier(node.child(1));
 
-  switch (node.sym) {
-    case sym_optional_parameter_declaration:
-      err << emit_type(node.child(0));
-      err << emit_identifier(node.child(1));
-      err << emit_text(node.child(2));
-      err << emit_expression(node.child(3));
-      break;
-    case sym_parameter_declaration:
-      err << emit_type(node.child(0));
-      err << emit_identifier(node.child(1));
-      break;
-    default:
-      err << emit_default(node);
-      break;
-  }
+  return err << check_done(node);
+}
+
+CHECK_RETURN Err MtCursor::emit_optional_parameter_declaration(MnNode node) {
+  Err err = emit_ws_to(node);
+  assert(node.sym == sym_optional_parameter_declaration);
+
+  err << emit_type(node.child(0));
+  err << emit_identifier(node.child(1));
+  err << emit_text(node.child(2));
+  err << emit_expression(node.child(3));
+
+  return err << check_done(node);
+}
+
+CHECK_RETURN Err MtCursor::emit_module_parameter_declaration(MnNode node) {
+  Err err = emit_ws_to(node);
+  assert(node.sym == sym_optional_parameter_declaration);
+
+  //err << emit_type(node.child(0));
+  //err << skip_over(node.child(0));
+  //err << emit_identifier(node.child(1));
+  //err << emit_text(node.child(2));
+  //err << emit_expression(node.child(3));
+
+  auto param_type = node.get_field(field_type);
+  auto param_decl = node.get_field(field_declarator);
+  auto param_val  = node.get_field(field_default_value);
+
+  /*
+  cursor = param_type.start();
+  err << emit_type(param_type);
+  err << emit_print(" =$= ");
+  */
+  cursor = param_decl.start();
+  err << emit_declarator(param_decl);
+  err << emit_print(" = ");
+  cursor = param_val.start();
+  err << emit_expression(param_val);
+
+  cursor = node.end();
 
   return err << check_done(node);
 }
@@ -1831,6 +1936,10 @@ CHECK_RETURN Err MtCursor::emit_sym_field_declaration(MnNode n) {
   else if (field->is_port()) {
     // Ports don't go in the class body.
     err << skip_over(n);
+    return err << check_done(n);
+  }
+  else if (field->is_dead()) {
+    err << comment_out(n);
     return err << check_done(n);
   }
   else {
@@ -2056,41 +2165,75 @@ CHECK_RETURN Err MtCursor::emit_field_port(MtField* f) {
 
 //------------------------------------------------------------------------------
 
-CHECK_RETURN Err MtCursor::emit_modparam_list() {
+//------------------------------------------------------------------------------
+
+CHECK_RETURN Err MtCursor::emit_module_parameter_list(MnNode param_list) {
   Err err;
 
-  if (!current_mod->mod_param_list) return err;
+  int param_count = 0;
 
-  err << emit_indent();
-  MtCursor sub_cursor = *this;
-  sub_cursor.cursor = current_mod->mod_param_list.start();
-  for (const auto& c : (MnNode&)current_mod->mod_param_list) {
-    bool handled = false;
+  for (const auto& c : param_list) {
     switch (c.sym) {
-      case anon_sym_LT:
-        err << sub_cursor.emit_replacement(c, "#(");
-        handled = true;
-        break;
-      case anon_sym_GT:
-        err << sub_cursor.emit_replacement(c, ")");
-        handled = true;
-        break;
-
       case sym_optional_parameter_declaration:
       case sym_parameter_declaration:
-        err << sub_cursor.emit_print("parameter ");
-        err << sub_cursor.emit_declaration(c);
-        handled = true;
-        break;
-
-      case anon_sym_COMMA:
-        err << sub_cursor.emit_text(c);
-        handled = true;
+        param_count++;
         break;
     }
-    assert(handled);
   }
-  err << emit_newline();
+
+  /*
+  if (current_mod->constructor) {
+    param_count += current_mod->constructor->param_nodes.size();
+  }
+  */
+
+  if (!param_count) return err;
+
+  //----------
+
+  //err << emit_indent();
+  //err << emit_print("#(");
+  //err << emit_newline();
+
+  // FIXME handle default template params
+  if (param_list) {
+    MtCursor sub_cursor = *this;
+    sub_cursor.cursor = param_list.start();
+    for (const auto& c : param_list) {
+      switch (c.sym) {
+        case sym_optional_parameter_declaration:
+          err << sub_cursor.emit_print("parameter ");
+          err << sub_cursor.skip_ws();
+          err << sub_cursor.emit_module_parameter_declaration(c);
+          err << sub_cursor.emit_print(";");
+          err << sub_cursor.emit_newline();
+          err << sub_cursor.emit_indent();
+          break;
+
+        case sym_parameter_declaration:
+          err << ERR("Template parameters must have a default value\n");
+          break;
+
+        default:
+          err << sub_cursor.skip_over(c);
+          break;
+      }
+    }
+  }
+
+  /*
+  if (current_mod->constructor && current_mod->constructor->param_nodes.size()) {
+    MtCursor sub_cursor = *this;
+    for (const auto& c : current_mod->constructor->param_nodes) {
+      err << sub_cursor.emit_print("parameter %s", c.name4().c_str());
+      if (--param_count) err << sub_cursor.emit_print(",");
+      err << sub_cursor.emit_newline();
+    }
+  }
+  */
+
+  //err << emit_print(")");
+  //err << emit_newline();
   return err;
 }
 
@@ -2145,7 +2288,7 @@ CHECK_RETURN Err MtCursor::emit_module_ports(MnNode class_body) {
   }
 
   for (auto m : current_mod->all_methods) {
-    if (m->is_public() && m->internal_callers.empty()) {
+    if (!m->is_init_ && m->is_public() && m->internal_callers.empty()) {
       err << emit_method_ports(m);
     }
   }
@@ -2184,11 +2327,19 @@ CHECK_RETURN Err MtCursor::emit_sym_class_specifier(MnNode n) {
   err << emit_indent();
   err << emit_replacement(class_lit, "module");
   err << emit_type(class_name);
-  err << emit_newline();
+  err << emit_print(" ");
+  //err << emit_newline();
 
-  err << emit_modparam_list();
   err << emit_module_ports(class_body);
+
+  push_indent(class_body);
+  err << emit_newline();
+  err << emit_indent();
+  err << emit_module_parameter_list(current_mod->mod_param_list);
+  err << emit_newline();
+  err << emit_indent();
   err << emit_sym_field_declaration_list(class_body, false);
+  pop_indent(class_body);
 
   cursor = n.end();
   current_mod = old_mod;
@@ -2258,7 +2409,25 @@ CHECK_RETURN Err MtCursor::emit_sym_field_declaration_list(MnNode n, bool is_str
   Err err = emit_ws_to(sym_field_declaration_list, n);
   push_indent(n);
 
+  bool noconvert = false;
+  bool exclude = false;
+  bool dumpit = false;
+
   for (auto child : n) {
+    if (noconvert) {
+      err << comment_out(child);
+      noconvert = false;
+      continue;
+    }
+
+    if (dumpit) {
+      child.dump_tree();
+      dumpit = false;
+    }
+
+    if (child.sym == sym_comment && child.contains("metron_noconvert")) noconvert = true;
+    if (child.sym == sym_comment && child.contains("dumpit"))    dumpit = true;
+
     switch (child.sym) {
       case anon_sym_LBRACE:
         if (!is_struct) {
@@ -2509,7 +2678,25 @@ CHECK_RETURN Err MtCursor::emit_toplevel_node(MnNode node) {
 CHECK_RETURN Err MtCursor::emit_toplevel_block(MnNode n) {
   Err err = emit_ws_to(n);
 
+  bool noconvert = false;
+  bool dumpit = false;
+
   for (auto c : n) {
+    if (noconvert) {
+      noconvert = false;
+      err << comment_out(c);
+      err << check_done(c);
+      continue;
+    }
+
+    if (dumpit) {
+      c.dump_tree();
+      dumpit = false;
+    }
+
+    if (c.sym == sym_comment && c.contains("metron_noconvert"))  noconvert = true;
+    if (c.sym == sym_comment && c.contains("dumpit"))     dumpit = true;
+
     err << emit_toplevel_node(c);
     err << check_done(c);
   }
@@ -2635,15 +2822,15 @@ CHECK_RETURN Err MtCursor::emit_sym_return(MnNode n) {
   for (auto c : n) {
     if (c.sym == anon_sym_return) {
 
-      if (current_method->in_tock) {
+      if (current_method->is_tock_) {
         assert(current_method->needs_binding || current_method->needs_ports);
         err << emit_replacement(c, "%s_ret =", current_method->name().c_str());
       }
-      else if (current_method->in_func && current_method->is_public() && !current_method->called_in_module()) {
+      else if (current_method->is_func_ && current_method->is_public() && !current_method->called_in_module()) {
         assert(current_method->needs_binding || current_method->needs_ports);
         err << emit_replacement(c, "%s_ret =", current_method->name().c_str());
       }
-      else if (current_method->in_tick) {
+      else if (current_method->is_tick_) {
         assert(current_method->needs_binding || current_method->needs_ports);
         err << emit_replacement(c, "%s_ret <=", current_method->name().c_str());
       }
@@ -2742,8 +2929,8 @@ CHECK_RETURN Err MtCursor::emit_sym_template_declaration(MnNode n) {
 }
 
 //------------------------------------------------------------------------------
-// Replace foo.bar.baz with foo_bar_baz, so that a field expression instead
-// refers to a glue expression.
+// Replace foo.bar.baz with foo_bar_baz if the field refers to a submodule port,
+// so that it instead refers to a glue expression.
 
 CHECK_RETURN Err MtCursor::emit_sym_field_expression(MnNode n) {
   Err err = emit_ws_to(sym_field_expression, n);
@@ -2753,7 +2940,10 @@ CHECK_RETURN Err MtCursor::emit_sym_field_expression(MnNode n) {
 
   auto component = current_mod->get_component(component_name);
 
-  if (component) {
+  bool is_port = component && component->_type_mod->is_port(component_field);
+  //printf("is port %s %d\n", component_field.c_str(), is_port);
+
+  if (component && is_port) {
     auto field = n.text();
     for (auto& c : field) {
       if (c == '.') c = '_';
@@ -2807,9 +2997,13 @@ CHECK_RETURN Err MtCursor::emit_sym_case_statement(MnNode n) {
           err << emit_replacement(child, ",");
         }
         break;
+      case sym_if_statement:
       case sym_compound_statement:
       case sym_expression_statement:
         err << emit_statement(child);
+        break;
+      case sym_qualified_identifier:
+        err << emit_sym_qualified_identifier(child);
         break;
       default:
         err << emit_default(child);
@@ -3038,6 +3232,9 @@ CHECK_RETURN Err MtCursor::emit_expression(MnNode n) {
     case sym_update_expression:
       err << emit_sym_update_expression(n);
       break;
+    case sym_nullptr:
+      err << emit_replacement(n, "\"\"");
+      break;
 
     default:
       err << emit_default(n);
@@ -3265,7 +3462,9 @@ CHECK_RETURN Err MtCursor::emit_sym_parameter_list(MnNode node) {
 
   for (auto child : node) {
     if (child.sym == sym_parameter_declaration)
-      err << emit_declaration(child);
+      err << emit_parameter_declaration(child);
+    else if (child.sym == sym_optional_parameter_declaration)
+      err << emit_optional_parameter_declaration(child);
     else
       err << emit_default(child);
   }
@@ -3325,6 +3524,51 @@ CHECK_RETURN Err MtCursor::emit_sym_preproc_ifdef(MnNode n) {
 }
 
 //------------------------------------------------------------------------------
+
+// This doesn't really work right, TreeSitter interprets "logic<8>" in "#define FOO logic<8>" as a template function call
+#if 0
+
+  {
+    MtSourceFile dummy_source;
+    dummy_source.lib = current_source->lib;
+    dummy_source.source = arg.data();
+    dummy_source.source_end = arg.data() + arg.size();
+    dummy_source.lang = tree_sitter_cpp();
+    dummy_source.parser = ts_parser_new();
+    ts_parser_set_language(dummy_source.parser, dummy_source.lang);
+    dummy_source.tree = ts_parser_parse_string(dummy_source.parser, NULL, arg.data(), (uint32_t)arg.size());
+
+    TSNode ts_root = ts_tree_root_node(dummy_source.tree);
+    auto root_sym = ts_node_symbol(ts_root);
+    dummy_source.root_node = MnNode(ts_root, root_sym, 0, &dummy_source);
+
+    if (dummy_source.root_node.sym == sym_translation_unit) {
+      dummy_source.root_node = dummy_source.root_node.child(0);
+    }
+
+    // TreeSitter tacks an ERROR node on if we parse just a bare integer constant
+    if (dummy_source.root_node.sym == 0xFFFF) {
+      dummy_source.root_node = dummy_source.root_node.child(0);
+    }
+
+    //dummy_source.root_node.dump_tree();
+
+    MtCursor preproc_cursor(current_source->lib, &dummy_source, nullptr, str_out);
+    preproc_cursor.preproc_vars = preproc_vars;
+
+    //dummy_source.root_node.dump_tree();
+    if (dummy_source.root_node.is_expression()) {
+      err << preproc_cursor.emit_expression(dummy_source.root_node);
+    }
+    else if (dummy_source.root_node.is_statement()) {
+      err << preproc_cursor.emit_statement(dummy_source.root_node);
+    }
+    else {
+      err << preproc_cursor.emit_default(dummy_source.root_node);
+    }
+  }
+  cursor = n.end();
+#endif
 
 CHECK_RETURN Err MtCursor::emit_sym_preproc_def(MnNode n) {
   Err err = emit_ws_to(sym_preproc_def, n);
@@ -3412,7 +3656,24 @@ CHECK_RETURN Err MtCursor::emit_sym_compound_statement(
     MnNode node, const std::string& delim_begin, const std::string& delim_end) {
   Err err = emit_ws_to(sym_compound_statement, node);
 
+  bool noconvert = false;
+  bool dumpit = false;
+
   for (auto child : node) {
+
+    if (noconvert) {
+      noconvert = false;
+      err << comment_out(child);
+      continue;
+    }
+
+    if (dumpit) {
+      child.dump_tree();
+      dumpit = false;
+    }
+
+    if (child.sym == sym_comment && child.contains("metron_noconvert"))  noconvert = true;
+    if (child.sym == sym_comment && child.contains("dumpit"))     dumpit = true;
 
     switch (child.sym) {
       case anon_sym_LBRACE:
@@ -3480,11 +3741,18 @@ CHECK_RETURN Err MtCursor::emit_sym_update_expression(MnNode n) {
   auto id = n.get_field(field_argument);
   auto op = n.get_field(field_operator);
 
+  auto left_is_field = current_mod->get_field(id) != nullptr;
+
   if (n.get_field(field_operator).text() == "++") {
     push_cursor(id);
     err << emit_identifier(id);
     pop_cursor(id);
-    err << emit_print(" = ");
+    if (current_method && current_method->is_tick_ && left_is_field) {
+      err << emit_print(" <= ");
+    }
+    else{
+      err << emit_print(" = ");
+    }
     push_cursor(id);
     err << emit_identifier(id);
     pop_cursor(id);
@@ -3493,7 +3761,12 @@ CHECK_RETURN Err MtCursor::emit_sym_update_expression(MnNode n) {
     push_cursor(id);
     err << emit_identifier(id);
     pop_cursor(id);
-    err << emit_print(" = ");
+    if (current_method && current_method->is_tick_ && left_is_field) {
+      err << emit_print(" <= ");
+    }
+    else{
+      err << emit_print(" = ");
+    }
     push_cursor(id);
     err << emit_identifier(id);
     pop_cursor(id);

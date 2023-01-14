@@ -1,24 +1,11 @@
 #include "metron_tools.h"
 
-class Module {
-  public:
+//------------------------------------------------------------------------------
 
-  // decl in for
-  int loop1() {
-    int x = 0;
-    for (int i = 0; i < 10; i++) {
-      x = x + i;
-    }
-    return x;
-  }
+class MetroBoySPU2 {
+public:
 
-  // decl outside of for
-  int loop2() {
-    int x = 0;
-    int i;
-    for (i = 0; i < 10; i++) {
-      x = x + i;
-    }
-    return x;
-  }
+private:
+  logic<8> memory[256];
+  logic<8> data_out;
 };

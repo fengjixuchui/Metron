@@ -70,7 +70,7 @@ void MnNode::dump_source_lines() const {
   if (*a == '\n' || *a == '\r') a++;
   if (*b == '\n' || *b == '\r') b--;
 
-  TinyLog::get().print_buffer(0x008080FF, a, int(b - a + 1));
+  TinyLog::get().print_buffer(stdout, 0x008080FF, a, int(b - a + 1));
 
   LOG("\n");
 
@@ -117,6 +117,13 @@ MnNode MnNode::named_child(int index) const {
 
 MnNode MnNode::first_named_child() const { return named_child(0); }
 
+MnNode MnNode::child_by_sym(TSSymbol _sym) const {
+  for (auto c : *this) {
+    if (c.sym == _sym) return c;
+  }
+  return MnNode::null;
+}
+
 bool MnNode::is_static() const {
   for (const auto& c : *this) {
     if (c.sym == sym_storage_class_specifier && c.text() == "static")
@@ -154,6 +161,26 @@ bool MnNode::match(const char* s) {
     if (*a++ != *s++) return false;
   }
   return true;
+}
+
+bool MnNode::contains(const char* s) const {
+  if (is_null()) return false;
+  const char* a = start();
+  const char* b = end();
+  const char* c = s;
+
+  while(a != b && *c) {
+    if (*a == *c) {
+      a++;
+      c++;
+    }
+    else {
+      a++;
+      c = s;
+    }
+  }
+
+  return *c == 0;
 }
 
 //------------------------------------------------------------------------------
@@ -216,6 +243,9 @@ std::string MnNode::name4() const {
 
     case sym_primitive_type:
       return text();
+
+    case sym_pointer_declarator:
+      return get_field(field_declarator).name4();
 
     default:
       Err err;

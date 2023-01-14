@@ -36,22 +36,63 @@ std::string MtMethod::name() const { return _name; }
 bool MtMethod::is_constructor() const { return _name == _mod->name(); }
 
 bool MtMethod::categorized() const {
-  return in_init || in_tick || in_tock || in_func;
+  return is_init_ || is_tick_ || is_tock_ || is_func_;
 }
 
 bool MtMethod::is_valid() const {
   // A method must be only 1 of init/tick/tock/func
-  return (int(in_init) + int(in_tick) + int(in_tock) + int(in_func)) == 1;
+  return (int(is_init_) + int(is_tick_) + int(is_tock_) + int(is_func_)) == 1;
 }
 
 //------------------------------------------------------------------------------
 
+/*
+      case CTX_NONE:
+        LOG_C(0x808080, "Unknown field '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_INPUT:
+        LOG_C(0xFFFFFF, "-> Input '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_OUTPUT:
+        LOG_C(0xAAAAFF, "<- Output '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_SIGNAL:
+        LOG_C(0xAACCFF, "-- Signal '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_REGISTER:
+      case CTX_MAYBE:
+        LOG_C(0xAAFFAA, ">| Register '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_INVALID:
+        LOG_C(0x8080FF, "Invalid field '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_PENDING:
+        LOG_C(0x8080FF, "Pending field '%s' : %s", cname(), _type.c_str());
+        break;
+      case CTX_NIL:
+        LOG_C(0x8080FF, "Nil field '%s' : %s", cname(), _type.c_str());
+        break;
+*/
+
 void MtMethod::dump() {
   if (is_constructor()) {
-    LOG_B("Constructor %s\n", cname());
+    LOG_C(0xFF0088, "@ Constructor %s\n", cname());
   } else {
-    LOG_B("Method %s - init %d tick %d tock %d func %d\n", cname(), in_init,
-          in_tick, in_tock, in_func);
+    if (is_init_) {
+      LOG_C(0xBBBBBB, "# Init %s\n", cname());
+    }
+    else if (is_func_) {
+      LOG_C(0xFF8888, "@ Func %s\n", cname());
+    }
+    else if (is_tick_) {
+      LOG_C(0x88FF88, "^ Tick %s\n", cname());
+    }
+    else if (is_tock_) {
+      LOG_C(0x8888FF, "v Tock %s\n", cname());
+    }
+    else {
+      LOG_C(0x0000FF, "X Unknown %s\n", cname());
+    }
   }
 
   for (auto p : param_nodes) {

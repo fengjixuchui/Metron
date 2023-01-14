@@ -6,6 +6,7 @@
       "label": "build_metron",
       "command": "ninja",
       "args": [
+        //"bin/examples/pinwheel"
         "bin/metron"
       ],
       "problemMatcher": "$gcc",

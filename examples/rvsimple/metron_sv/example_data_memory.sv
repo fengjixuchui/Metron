@@ -10,8 +10,7 @@
 `include "constants.sv"
 `include "metron_tools.sv"
 
-module example_data_memory
-(
+module example_data_memory (
   // global clock
   input logic clock,
   // input signals
@@ -44,15 +43,15 @@ module example_data_memory
       if (byteena[1]) mask = mask | 32'h0000FF00;
       if (byteena[2]) mask = mask | 32'h00FF0000;
       if (byteena[3]) mask = mask | 32'hFF000000;
-      mem[address] = (mem[address] & ~mask) | (data & mask);
+      mem[address] <= (mem[address] & ~mask) | (data & mask);
     end
   end
 
  /*public:*/
   initial begin
-    string s;
-    $value$plusargs("data_file=%s", s);
-    $readmemh(s, mem);
+    //std::string s;
+    //value_plusargs("data_file=%s", s);
+    //readmemh(s, mem);
   end
 endmodule
 

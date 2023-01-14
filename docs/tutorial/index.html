@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="en-us">
+
+<head>
+  <script type="text/javascript">
+    console.log("load starting @ " + performance.now());
+  </script>
+  <link rel="stylesheet" href="tutorial.css" />
+  <link rel="stylesheet" href="../assets/vs2015.min.css" />
+
+  <script src="../assets/highlight.min.js"></script>
+  <script src="../assets/verilog.min.js"></script>
+
+  <title>Metron C++ to Verilog Tutorial</title>
+  <link rel="icon" type="image/x-icon" href="../assets/favicon.ico">
+
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="topbar_spacer"> </div>
+    <div class="topbar_title">
+      <img src="../assets/metron_icon.svg" width="48" height="48" style="margin:8px;">
+      Metron C++ to Verilog Translator Tutorial <a style="margin-left:80px;"
+        href="https://github.com/aappleby/Metron">Source on Github</a>
+    </div>
+    <div class="topbar_spacer"></div>
+
+  </div>
+
+
+
+  <div class="contents">
+    <div class="divider">Metron lets you write synthesizable Verilog in plain C++</div>
+    <p>
+      Metron is a tool for converting a very limited subset of C++ into a very limited subset of Verilog. Even though
+      it's limited, the C++ that Metron can convert is still enough to be useful. The C++ source code can be easily run
+      inside a trivial simulation framework. The same code converted to Verilog can be simulated in Icarus or Verilator,
+      converted to RTL (Register-Transfer Level, a generic term for circuit "assembly language") netlists by Yosys,
+      packed into FPGA bitstreams by NextPNR, and uploaded to a development board using IceProg - all open-source tools.
+    </p>
+    <p>
+      If you're completely unfamiliar with Verilog I'd recommend reading through a "Hello Verilog World" tutorial
+      elsewhere before going through this one, but the TL;DR of Verilog is that it's a language for "writing" logic
+      circuits. Verilog looks superficially similar to C, but the semantics of how it "executes" a circuit is _very_
+      different. Compiled Verilog programs describe networks of logic gates and wires, not sequences of instructions.
+      Translating between the two languages is thus fraught with peril, and Metron is a noble attempt to bridge
+      between the two by enforcing a set of rules on the C side to help ensure that the translation is possible.
+    </p>
+    <p>
+      Writing logic in Metron is generally much more user-friendly than writing Verilog directly. Metron source code
+      is plain, unannotated C++ with zero dependencies and can be compiled, run, and debugged in any C++ environment.
+      The Metron tool itself can be used as just a code-linter to determine if your C code does anything that doesn't
+      have an equivalent in Verilog, or it can generate an entire project's worth of Verilog files in one step. If you
+      need to do low-level bit twiddling to interface with hardware, Metron provides a "metron_tools.h" header file that
+      defines a fairly fully-featured "logic&lt;N&gt;" template class that simulates arbitrary bit-width integers in C++
+      with almost no overhead.
+    </p>
+    <p>
+      Simulation performance varies a lot depending on the codebase, but in general Metron designs simulate from 2x to
+      5x faster than the same design written in Verilog and translated back to C by Verilator. For interpreted
+      simulators like Icarus, the difference is more like hundreds or thousands of times faster. Yes, you can translate
+      from C to Verilog with Metron and then translate it back to C with Verilator and both versions should produce
+      bit-identical results. This is useful for debugging Metron itself.
+    </p>
+    <p>
+      This tutorial is targeted at programmers with a basic understanding of C++ classes who may or may not have tried
+      their hand at Verilog before. Some of the hardware-side explanations may require a deeper understanding of how
+      circuts work, but in general you should be able to follow along.
+    </p>
+    <p>
+      <span style="font-weight:600; color:#DD8;">All of the code editors below are live</span> - edit the C++ code on
+      the left and
+      you should see your converted code on the right. If your code isn't convertible to Verilog, the title bar on the
+      right will turn red and you'll see some (still pretty cryptic) error messages instead. Switching between files and
+      creating new files can be done by changing the filename above the source window. Files will persist in the virtual
+      filesystem until this page is reloaded.
+    </p>
+    <p>
+      One note when editing the live code - Metron is based on TreeSitter, which is _very_ lenient about the code it
+      parses. Metron in contrast is _very_ strict about what code it will convert. The combination can be awkward, and
+      there's no support in this tutorial for doing syntax checking on the C source before we try to convert it. Watch
+      out for typos, and if all else fails just refresh the page and start over.
+    </p>
+    <p>
+      (One side note for the Verilog experts reading this - I'm aware that I'm playing fast and loose with my
+      terminology here and not distinguishing between the language features of Verilog vs. SystemVerilog. It's a
+      tutorial, the deeper discussions will go on some other page.)
+    </p>
+
+    <div class="divider">Let's begin by counting.</div>
+    <p>
+      The first useful circuit most Verilog tutorials present is a simple counter, so let's take a look at
+      Metron's version:<br>
+    </p>
+    <div class="live_code" id="./examples/tutorial/counter.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      Yeah, that's it. That's the whole thing. Metron doesn't require any additional headers or libraries or code
+      annotations, so a plain C++ class header file works just fine. Metron applications are just collections of header
+      files that you can use in a host C++ application like this:
+    </p>
+    <div class="code_box">
+      <pre class="code_jar">#include &lt;stdio.h&gt;
+#include "examples/tutorial/counter.h"
+
+int main(int argc, char** argv) {
+  Counter counter;
+  for (int cycle = 0; cycle &lt; 1000; cycle++) {
+    counter.update();
+    printf("Counter value %d\n", counter.count);
+  }
+  return 0;
+}
+</pre>
+    </div>
+    <p>
+      If we compare the C++ version of our counter with the Verilog version, the differences are:
+    </p>
+
+    <h1>The "class" keyword turned into "module" and the curly braces are now "begin"/"end(module)"</h1>
+    <p>
+      While technically speaking Verilog does have classes, they're usually not synthesizable - they can't be turned
+      into circuits. The basic synthesizable "unit" of a program in Verilog is a Module, which is similar to a class but
+      much more restrictive.
+    </p>
+    <p>
+      Verilog generaly uses "begin"/"end" instead of curly braces, but these are purely textual changes and don't affect
+      the meaning of the program.
+    </p>
+    <h1>The module has a "port list" containing a clock and the "count" member, now with an "output" label</h1>
+    <p>
+      Unlike C, connectivity between modules and the outside world is much more limited. Everything is private-ish by
+      default unless exposed through a "port", which you can think of as something like a reference in C++. Since our
+      "count" variable is public, Metron has moved it to the port list so that it can be seen outside the module. This
+      module also needs a clock for the "always_ff" block below, so Metron has added a default clock signal to the port
+      list for us.
+    </p>
+    <h1>The "update" function is now in a block starting with "always_ff @(posedge clock)"</h1>
+    <p>
+      The statement "always_ff @(posedge clock)" means something like "every time the clock signal transitions from 0 to
+      1 (a 'positive edge'), do this", which brings up an important point - When we translate Metron programs into
+      Verilog and upload them to a FPGA, they're not "running" in the same sense that C code runs after we compile
+      it: circuits don't evaluate blocks of code in order, they don't call functions, they're literally bundles of wires
+      running between logic gates and everything is happening simultaneously. Instead of function calls, Verilog code is
+      "triggered" to run when certain things happen - when a clock signal changes from 0 to 1, when an input wire
+      changes value, etecetera.
+    </p>
+    <h1>The "count++" statement became "count &lt;= count + 1" - what does "&lt;=" mean?</h1>
+    <p>
+      Verilog has two ways of doing "assignment" - there's the "=" operator, which works roughly the same as in C.
+      There's also the "&lt;=" operator, which does <b>not</b> work like C. The "&lt;=" operator, also called the
+      "non-blocking assignment operator", is more like a "delayed assignment" or an "assignment promise" - the field
+      assigned <b>will be</b> set to the new value, but it hasn't happened yet - if you're writing Verilog and you read
+      from the field after a non-blocking assignment, you read the <b>old</b> value.
+    </p>
+    <p>
+      Non-blocking assignments work together with "always_ff" blocks - a clock edge triggers a bunch of always_ff blocks
+      to be evaluated, the code non-blockingly (yes, my terminology is awkward) assigns things, and then at some
+      unspecified* point in the future after all triggered blocks have been evaluated the assignments take effect.
+      Because non-blocking assignments behave differently from regular assignments in C, <b>Metron will generate an
+        error
+        if you read from a variable after it's assigned if that assignment would be non-blocking in Verilog.</b>
+    </p>
+    <p style="font-size:10px;">
+      * (It's not actually unspecified, it's defined in the Verilog language spec - but for the purposes of this
+      tutorial
+      delayed assignments happen in *handwaving* THE FUTURE.)
+    </p>
+    <p>
+      Try commenting out the "int dummy = count;" line below to fix the error.
+    </p>
+    <br>
+    <br>
+
+    <div class="live_code" id="./examples/tutorial/nonblocking.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+    <h1>
+      Well that seems kinda silly. Surely if you're analyzing the code you could insert some temporary variables while
+      you're translating it so we don't have to worry about this read-after write rule?
+    </h1>
+    <p>
+      You're not wrong, Metron could definitely do that - but it doesn't for a good reason. One of Metron's goals is
+      to produce translated Verilog that matches the original C++ as closely as possible. There are other
+      {language}-to-Verilog translators out there that do much, much more advanced analysis of their input source code
+      in order to generate Verilog that can handle almost anything C can throw at it. This includes things like
+      unrolling loops, pipelining function calls, and automatically generating state machines (or even entire virtual
+      CPUs) to ensure that most existing C functions and algorithms can be translated to Verilog without rewriting the
+      source. Those tools do work very well - the keyword to search for is "High-Level Synthesis" (a.k.a. HLS) if you'd
+      like to learn more. However, the translated code often borders on unreadable to a C programmer.
+    </p>
+    <p>
+      <b>
+        Metron is not a high-level synthesis tool. Metron is a low-level tool that only handles translation between the
+        subsets of C and Verilog that can be done without radically altering the structure or meaning of the original
+        codebase.
+      </b>
+    </p>
+
+
+
+
+
+
+
+    <div class="divider">Signals Vs. Registers</div>
+    <p>
+      Let's look at another basic Verilog example for comparison, a 32-bit adder - this time with both a "C-style"
+      implementation and a "Verilog-style" implementation:
+    </p>
+    <div class="live_code" id="./examples/tutorial/adder.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      The two versions of Adder do exactly the same thing. In the first version, Metron has inferred that since add() is
+      public, its parameters and return values need to be present in the port list. Metron then prefixes the parameters
+      with the function name and creates a port named "{function}_ret" for the return value. In the second version the
+      params and return value are already represented as public variables and Metron just moves them to the port list
+      unchanged.
+    </p>
+    <h1>What does "always_comb" mean? We had "always_ff" earlier, how does this differ?</h1>
+    <p>
+      Unlike our counter, "Adder" has no internal persistent state. Values enter through the "a" and "b" input ports,
+      get added together, and immediately exit through the "sum" or "ret" output port. Since there's no clock involved
+      in the computation, the module doens't get a clock signal added to its port list and "always_ff" doesn't apply.
+      Instead Metron uses "always_comb" to indicate that this block is triggered whenever <b>any</b> of its inputs
+      change. Also note that in "always_comb" we use the regular "=" operator and not "&lt;=" - assignment to "sum"
+      happens <b>continuously</b> and isn't delayed until the end of the simulation step. In Verilog this is sometimes
+      called "continuous assignment".
+    </p>
+    <h1>
+      In the previous example, the "count" port was an "output register", but "sum" is an "output signal". What's the
+      difference?
+    </h1>
+    <p>
+      In order for Metron to convert your C code, it needs to be able to infer which member variables are
+      "register-type" and which are "signal-type" (the equivalent terms in Verilog are "reg" and "wire"). There's a
+      whole separate document in the Metron repo going into more detail on how the inference works, but to summarize:
+    </p>
+    <ul>
+      <li>Registers store state across clock cycles</li>
+      <li>Registers cannot be read after they are written (non-blocking assignment rule)</li>
+      <li>Registers can only be written in always_ff blocks</li>
+      <li>Registers must be written using "&lt;=" in Verilog</li>
+      <li>Registers only change their value when the clock ticks* (semantically speaking, they're still regular
+        variables
+        in C)</li>
+    </ul>
+    <p style="font-size:10px">
+      * (This implies "synchronous" and not "asynchronous" resets in Verilog, which generally won't affect us too much.)
+    </p>
+    <ul>
+      <li>Signals do not store state, they only move values around</li>
+      <li>Signals must be written first and cannot be written after they're read.</li>
+      <li>Signals can only be written in always_comb blocks</li>
+      <li>Signals must be written using "=" in Verilog</li>
+      <li>Signals change their values immediately after being assigned</li>
+    </ul>
+    <p>
+      If Metron can't infer the translation type of a member variable or if it sees a variable that breaks both the
+      "read-before-write" and "read-after-write" rules, it will refuse to translate the code. This is a fundamental part
+      of Metron's attempt to guarantee that the translated code behaves identically in both languages. I believe that
+      the logic it uses to do this is correct, but I only have a very informal proof at this point - caveat emptor.
+    </p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="divider">Ticks Vs. Tocks</div>
+    <h1>What if we want an adder that only changes its output when the clock ticks, instead of changing continuously?
+    </h1>
+    <p>
+      It's totally reasonable to want to delay the output of a computation until the next clock cycle - the module that
+      sent A and B in to be added may not be able to process the result until the next clock cycle, or we may have
+      timing constraints in our system that require us to break our computations down into smaller steps. We have two
+      ways of forcing a computation to be "clocked":
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/clocked_adder.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+    <p>
+      Again, both of the "clocked" adders do the same thing. The first inserts a dummy read so that "sum" is always
+      read-before-write (and thus _must_ be a register), the second uses the magic prefix "tick" to flag the method as
+      "must be in (or called by) an always_ff block". One caveat though - "tick" methods can't return values, as doing
+      so would create a mismatch between the C++ behavior (the return value would be immediately visible to the caller)
+      and the Verilog behavior (the value visible in the port would be delayed until the clock edge).
+    </p>
+    <p>
+      There's an equivalent "tock" prefix to enforce "must be in always_comb", but both prefixes are completely
+      optional. They come in particularly useful when porting existing Verilog code to Metron - you may want to do
+      this if you're trying to interface Metron code with an existing codebase. Translate "always_comb" blocks into
+      functions that start with "tock", "always_ff" blocks into functions that start with "tick", and stuff any loose
+      "assign wire = value" statements into new always_comb blocks - Metron will usually tell you if you get something
+      wrong (and it's almost always related to declaration order, see the section below).
+    </p>
+    <p>
+      Internally, Metron categorizes all member functions into "tick-type" and "tock-type" groups much like it does with
+      member variables, plus a few additional categories ("init-type" for constructors and "func-type" for pure
+      functions).
+    </p>
+    <ul>
+      <li>Tick methods can only write registers</li>
+      <li>Tick methods cannot return values.</li>
+      <li>Tick methods can only call pure functions and other tick methods in the same module.</li>
+      <li>Tick methods cannot call methods in other modules</li>
+      <li>Tick methods are translated into "always_ff" blocks in Verilog if they're not called elsewhere.</li>
+    </ul>
+    <ul>
+      <li>Tock methods can only write signals</li>
+      <li>Tock methods can return values.</li>
+      <li>Tock methods can call any method in the same module*</li>
+      <li>Tock methods can call methods in other modules</li>
+      <li>Tock methods are translated into "always_comb" blocks in Verilog if they're not called elsewhere.</li>
+    </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="divider">Declaration Order Matters</div>
+    <p>
+      Metron traces through your code to verify that the rules regarding register read-before-writes and signal
+      write-before-reads are followed. To do so, it needs to know what the "entry points" are to your module and in
+      what order they should be called.
+    </p>
+    <p>
+      The rule that Metron uses to determine entry points is "All public methods that aren't called elsewhere in the
+      module are entry points", but the declaration order of those entry points <b>is significant</b>:
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/declaration_order.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+    <p>
+      Unlike earlier examples, these modules <b>do not do the same thing</b>.
+    </p>
+    <p>
+      In the commented-out Module1, the code "a = b + 1; b = a + 1;" reads from "b" before it's written and writes to
+      "a" before it's read. This means "b" must be a register and "a" must be a signal - but registers can only be
+      written in "always_ff" and signals can only be written in "always_comb", so we've broken a rule and the code won't
+      convert.
+    </p>
+    <p>
+      In Module2 and Module3 we've split update() up into two pieces - the only difference is the declaration order of
+      "update_a" and "update_b". Metron must choose _some_ order in which to trace the entry points, and the only order
+      that doesn't require special annotations is the declaration order. So in Module2 Metron sees "a" being
+      written first and makes it a signal, whereas in Module3 Metron sees "a" being read first and makes it a register.
+      Module4 works around this by adding temporary variables, which makes Metron see that both "a" and "b" are read
+      before being written.
+    </p>
+    <p>
+      If we were writing this directly in Verilog this issue would be irrelevant, as we can choose whether to use
+      "&lt;=" or "=" assignments as needed - because "&lt;=" assignments are "delayed", this has the same effect as
+      Module4 above.
+    </p>
+    <div class="code_box">
+      <pre class="code_jar">
+module Module4 (
+  // global clock
+  input logic clock,
+  // output registers
+  output int a,
+  output int b
+);
+/*public:*/
+
+  always_ff @(posedge clock) begin : update
+    a &lt;= b + 1;
+    b &lt;= a + 1;
+  end
+endmodule
+</pre>
+    </div>
+    <p>
+      Unfortunately in C we only have the one assignment operator, so there's no way for us to know that the programmer
+      meant "non-blocking" assignment. Instead we have to infer which Verilog assignment operator to use based on
+      context, and our context is intimately tied to declaration order. Metron could in theory support "reg_" and "sig_"
+      prefixes on variables like it supports "tick_" and "tock_" on methods, but in practice I found the resulting code
+      style annoying and didn't finish implementing it. Maybe it'll go on the feature request list.
+    </p>
+    <p>
+      Because Metron uses declaration order to determine how to trace your module's methods, it is <b>highly
+        recommended</b> that you place all your public tock-type methods together at the top of the class declaration,
+      followed by all your public tick-type methods. Private methods can go in any order at the bottom of the class
+      declaration.
+    </p>
+
+
+
+
+
+
+
+
+
+    <div class="divider">Functions Vs. Tasks</div>
+
+    <p>
+      While the examples we've looked at so far only use "always_comb" and "always_ff" on the Verilog side, Verilog does
+      support functions in two different flavors, which Metron will use in different cases:
+    </p>
+
+    <ul>
+      <li> Verilog "functions" must have return values*.</li>
+      <li> Pure functions can be called from any method.</li>
+      <li> Functions that write signals or registers can only be called from a corresponding tock or tick method.</li>
+    </ul>
+    <p style="font-size:10px;">* (not true according to the spec, but void functions are poorly supported by some tools)
+    </p>
+    <ul>
+      <li>
+        Verilog "tasks" do not have return values, but their arguments can be marked as "input" or "output"*
+      </li>
+      <li>
+        Tasks <b>break always_comb blocks</b> because always_comb blocks are not guaranteed to be "sensitive to" the
+        changes they make, so they're not used in tock methods. This is annoying and I'm not sure why it's part of the
+        spec.
+      </li>
+      <li>
+        Tasks are allowed to muck around with the simulation by controlling the flow of time, which is out of scope
+        for Metron.
+      </li>
+    </ul>
+    <p style="font-size:10px;">
+      * (Metron could probably support pass-by-reference in tasks using output params, but it's not quite there yet.)
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/functions_and_tasks.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+    <p>
+      Metron will usually translate methods into functions or tasks where applicable, though there are a few
+      corner-cases to work around bugs in some existing tools.
+    </p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="divider">Bit Twiddling Logic</div>
+
+    <p>
+      One thing that Verilog developers do vastly more often than C developers is bit-twiddling - extracting, copying,
+      concatenating, inverting, and generally mucking around with individual bits inside a variable. There are some
+      Verilog features to support this that just have no equivalent expression in C (the "?" symbol in case statements
+      for example), but most of it can at least be emulated using some C++ template tricks. Metron has special support
+      for translating operations on C types into the corresponding native Verilog "logic" type, which is a
+      built-in type with its own concatenation and duplication operators. Note that you'll need to include
+      "metron_tools.h" to use these helper methods.
+    </p>
+    <p>
+      The logic&lt;N&gt; template type defined in metron_tools.h behaves like an unsigned integer with an arbitrary
+      number of
+      bits up to 64. Type-checking conversions between logics of different width is lenient due to the Verilog spec,
+      which generally says you can assign anything to anything and you'll get either a truncated value or 0s. The
+      template bit-width is used in dup() and cat() to ensure that concatenating a logic&lt;2&gt; and a logic&lt;3&gt;
+      produces a logic&lt;5&gt; and that duplicating a logic&lt;4&gt; 7 times produces a logic&lt;28&gt;, that sort of
+      thing.
+    </p>
+    <p>
+      Note that while extracting slices of bits using "bN(x, offset)" is supported, assigning to slices of bits
+      currently isn't - there is some functionality for it in metron_tools.h, but it breaks tracing because we don't
+      trace reads and writes on a per-bit level yet. Prefer reading and writing entire fields at a time, and use
+      dup/cat/extract as needed to build up your new values.
+    </p>
+    <p>
+      The logic&lt;N&gt; template along with the bN(), cat(), and dup() methods have been benchmarked in Visual Studio,
+      Clang, and GCC and generally have little (VS) to no (GCC/Clang) performance impact over doing the same operations
+      manually with bitshifts and bitwise ops.
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/bit_twiddling.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+
+
+
+    <div class="divider">Building larger things by combining modules</div>
+
+    <p>
+      Modules can be nested. Since all the tutorial examples here are stored in a virtual filesystem, we can just
+      #include the earlier examples we want to use into this one. And yes, you can go back and edit the counter and
+      adder examples and changes you make will affect the example below, though you may need to type in the source
+      window to trigger an update as this tutorial doesn't know anything about dependencies between files.
+    </p>
+
+    <p>
+      Here's what we get if we make a module
+      that combines a Counter and an Adder:
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/submodules.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+    <p>
+      This is the first example with function calls across modules, and you can see from the generated code that Verilog
+      doesn't actually have any native way to do that. Instead, we have to "bind" variables to the module ports and we
+      can then read and write those variables from the parent module to control the behavior of the child module.
+    </p>
+    <p>
+      I described "ports" earlier as something vaguely like C++ references, and you can see the similarity here - "int
+      my_adder_add_a" and the "a" parameter in "int add(int a, int b)" are effectively the same variable. Writing to the
+      former triggers the evaluation of the adder's "always_comb begin : add" block, which writes to "add_ret", which is
+      bound to "my_adder_add_ret", which can then be used in update().
+    </p>
+    <p>
+      One limitation of the method bindings is that they can only be used once per code path - the binding variables
+      used to shuttle data from the parent module to the child module are signals and thus subject to the
+      no-write-after-read rule, which means that a second "call" to the method would have to overwrite the current
+      binding and thus break the rule. Note that because this rule applies per code path, if you have if() branches you
+      can call the same method in each branch. In practice the one-call rule is not a huge limitation - you can either
+      store the return value somewhere (it's also a signal), or you can add additional copies of your getter methods if
+      you really need to.
+    </p>
+
+
+
+
+    <div class="divider">Templates and Parameters</div>
+
+    <p>
+      Verilog contains the special keywords "genvar" and "generate" which allow for compile-time evaulation and
+      conditional code generation that's somewhere between C preprocesor macros and C++ constexprs. I haven't actually
+      used that feature much, so I haven't yet figured out how to make use of it in Metron. However, Metron does support
+      some basic module parameterization via C++ templates. Only integer templates are supported, but default arguments
+      should work. Metron will also translate const variables into Verilog's "parameter" or "localparam" equivalent and
+      allows for declaring namespaces full of constants (very useful), though the tool support for the "using" keyword
+      is inconsistent so you have to always prefix the constant with the namespace. I should probably add typedef
+      support...
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/templates.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+
+
+
+
+
+    <div class="divider">Memories and arrays</div>
+
+    <p>
+      Virtual CPUs aren't very useful if they have no RAM. Declaring memories in Verilog is a bit tricky, as each FPGA
+      vendor has slightly different support for blocks of RAM in terms of port width, number of read/write ports,
+      registered vs. unregistered outputs, etcetera. If our Metron/Verilog code has the same behavior as our target FPGA
+      RAM blocks, the RTL compiler will fit our memories into those blocks. If not, the RTL compiler will either spread
+      our memories across thousands of individual storage bits in the FPGA fabric or just give up entirely. Luckily it's
+      not too difficult to encourage the compiler to infer block RAMs, we just need to ensure that the inputs and
+      outputs are clocked.
+    </p>
+    <p>
+      The module below should turn into a FPGA block RAM after translation + compilation + synthesis - it declares 256
+      bytes of 8-bit storage with one read/write port. Metron's tracer is currently too lenient with tracing reads and
+      writes to arrays; it doesn't pay attention to the array index so you can (inadvertently) create memories with more
+      read ports than your FPGA can support.
+    </p>
+    <p>
+      Memories can be initialized via "readmemh" - this will load the memory contents from disk at runtime in C and at
+      compile time in Verilog.
+    </p>
+    <div class="live_code" id="./examples/tutorial/blockram.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      And here's a small client that checksums the above RAM block.
+    </p>
+    <div class="live_code" id="./examples/tutorial/checksum.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+
+
+    <div class="divider">Does Metron actually work in practice?</div>
+
+    <p>
+      We've gone over some basic examples of how code works in Metron, but adders and counters aren't very compelling
+      examples and the rules about what Metron will translate are quite restrictive. If you're a C programmer, you may
+      be wondering how to get any actual work done given these constraints. The rules may seem weird and arbitrary, but
+      there's not a lot we can do to avoid it - even something as simple as dereferencing a pointer has no directly
+      equivalent meaning in hardware, which means that whole swathes of language features and algorithms are immediately
+      thrown out the window.
+    </p>
+    <p>
+      Instead, writing in Metron requires adopting a different mindset- you're not writing a program, you're building a
+      machine. The machine takes one step forward at each clock cycle, computing its new state from its old state using
+      the code that you've provided. That state can be almost arbitrarily complex, but it's fundamentally static - the
+      classes and structs that you instantiate at compile time are all you've got.
+    </p>
+    <p>
+      Once you have a mental image of what your machine does and the steps needed to do it, you can start sketching out
+      the modules you'll need to accomplish the task. Let's take a look at an example much more interesting than a
+      counter, but not that much more complex: generating a VGA video signal. I've intentionally avoided putting
+      comments in the code here to give you a chance to puzzle it out yourself.
+    </p>
+
+    <div class="live_code" id="./examples/tutorial/vga.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+
+    <p>
+      With a bit of effort we could hook our VGA module up to SDL and draw the simulated VGA output on screen - and
+      there's an example of that already in the examples folder (see examples/pong/metron/pong.h) if you'd like to take
+      a look.
+    </p>
+    <p>
+      With a bit more effort we can also take this module, compile and upload it to a FPGA (again outside the scope of
+      this tutorial), and wire it up to a real monitor - it will display a red checkerboard with a white border, the
+      same as the simulation.
+    </p>
+    <p>
+      I'm fairly confident at this point that Metron is a useful tool for "real" hardware development, but only time
+      will tell for sure.
+    </p>
+
+
+
+    <div class="divider">Tying it all together with a UART example</div>
+
+    <p>
+      Last up, let's take a closer look at that UART (serial port) example from Metron's testbench. This example
+      produces identical output in C, Verilator, Icarus, and when uploaded to a FPGA using Yosys+NextPNR+IceProg, so
+      it's fairly well tested. It uses template parameters to control transmission speed and whether the
+      message is repeated. It also consists of multiple modules tied together through ports to demonstrate how to
+      build more complex systems in a slightly more realistic fashion. We'll briefly walk through each module to point
+      out how things are connected.
+    </p>
+    <p>
+      The whole example consists of a UART client that transmits a buffer over the uart (uart_hello), the UART
+      transmitter, the UART receiver, and a "top" module to tie things together. The top module is responsible for
+      sending signals back to the testbench and routing signals between modules. You can see how verbose the port
+      connections get, and this isn't even a large set of modules.
+    </p>
+    <div class="live_code" id="./examples/uart/metron/uart_top.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      Next, the UART client. It receives "clear to send" and "idle" signals from the transmitter and sends "request"
+      and "data" signals back to it. It also sends a "done" signal to uart_top to stop the simulation once the buffer's
+      been transmitted.
+    </p>
+    <div class="live_code" id="./examples/uart/metron/uart_hello.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      Now for the UART transmitter, which is basically a shift register with a bit of extra timing code. I've tested
+      this with CYCLES_PER_BIT=1 and it worked both in simulation and in an iCE40 FPGA (with the clock divided way
+      down), though I had to add "extra_stop_bits" to ensure that it would be able to re-sync with my USB-to-serial
+      dongle.
+    </p>
+
+    <div class="live_code" id="./examples/uart/metron/uart_tx.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      And last the UART receiver, which has an additional checksum output for testing.
+    </p>
+
+    <div class="live_code" id="./examples/uart/metron/uart_rx.h">
+      <div class="source_panel" id="c_panel">
+        <div class="header_bar">
+          <div class="filename" contenteditable="true"></div>
+        </div>
+        <div class="code_jar language-cpp"></div>
+      </div>
+      <div class="source_panel" id="v_panel">
+        <div class="header_bar">
+          <div class="filename"></div>
+        </div>
+        <div class="code_jar language-verilog"></div>
+      </div>
+    </div>
+    <p>
+      Together with a small C++ testbench and a set of commands to do the FPGA synthesis, the UART example makes for a
+      nice round-trip proof of concept that Metron can produce correct, synthesizable code that works on all the
+      platforms it supports. It's been my regular sanity-check while writing Metron - it's big enough to do a useful
+      thing and small enough to test quickly, so most of my "How do I do X in language Y?" questions were worked out
+      here first.
+    </p>
+
+
+
+
+
+
+
+
+
+    <div class="divider">Closing remarks</div>
+    <p>
+      I've written this tutorial with the hopes that it is clear and straightforward enough to encourage programmers who
+      have not yet tried writing Verilog to play around with Metron and hopefully learn some new skills and new ways of
+      thinking about programming.
+    </p>
+    <p>
+      I'm also familiar enough with how Verilog and other HDLs are used in the industry that I expect a small bit of
+      controversy over Metron's existence. The idea that a "procedural-ish" language like C++ can be translated into a
+      "hardware-ish" language like Verilog without going to heroic lengths to annotate and instrument and unwind and
+      unroll and functional-state-machine-ify the codebase is... pretty unusual, near as I can tell. Most of the popular
+      cross-language tools either require you to write weirdly verbose C++ (SystemC), hide a lot of the generated
+      complexity from you (Vivado HLS), or wrap hardware concepts in a much-higher-level functional language that not
+      everyone is familiar with (Chisel, Spinal, Bluespec). There are also research papers about other C-to-Verilog
+      conversion tools that do some exceedingly complex translation steps including emitting entire virtual CPUs
+      specialized to run the translated source code (!!!). If I wasn't Metron's author, I would be understandably
+      skeptical. I would suspect that either Metron would be too limited to do anything useful with, or that it would
+      miss some obvious corner cases and generate incorrect code when trying to implement more complex projects. I think
+      I've covered the former adequately, and while I have a good couple thousand lines of work towards the latter
+      there's still a lot of testing to be done.
+    </p>
+    <p>
+      Because it's a bit unconventional, I've tried to provide a good set of tests and examples to demonstrate that
+      Metron works for RTL development in practice. In the example folder you'll find a couple RISC-V CPUs that pass the
+      RV32I test suite, the simple serial UART shown above, the Pong example mentioned in the section about VGA output,
+      all the tutorial sources that appear here, and a couple unfinished conversions. The tests folder contains a pretty
+      good suite of Metron unit tests that both verify that Metron can convert the source files and a handful of
+      additional tests that run Metron code in lockstep with C-to-Verilog-to-C-via-Verilator translated code to verify
+      that Metron produces results bit-identical to the Verilator simulation. There is also a full C-to-FPGA build
+      pipeline set up for the UART example.
+    </p>
+    <p>
+      One aspect I only briefly touched on in this tutorial is performance. You could argue that Metron is cheating
+      compared to Icarus/Verilator/etcetera since it doesn't support everything Verilog can do, but what it can do it
+      does very, very fast.
+    </p>
+    <p>
+      For example, there's a Python-based hardware description language called MyHDL that includes a couple small
+      benchmarks. One of those is "lfsr24", a simple 24-bit random number generator. According to <a
+        href="https://www.myhdl.org/docs/performance.html">their docs</a>, MyHDL can run the benchmark (~16 million
+      cycles) in about 67 seconds using the "pypy" runtime. The same module in Metron runs in debug builds (on an AMD
+      5900x) in 0.8 seconds. In an -O3 release build, it runs in 0.025 seconds (25 milliseconds) - <b>2700x faster</b>.
+    </p>
+    <p>
+      This is a totally unfair comparison since I have no idea what processor the original benchmark was run on and I
+      haven't (yet) replicated the MyHDL numbers myself (I get 162 seconds for "python3 test_lfsr24.py", which seems
+      off), but the sheer scale difference is interesting by itself. Simulating 16 million cycles of _anything_ in 25
+      milliseconds is a simulation rate of ~640 megahertz. On a 4 gigahertz processor, that's only a bit over 6 cycles
+      per simulation step - the lfsr24 module is admittedly doing very little (just shifts and xors), but beating 6
+      cycles by any significant factor would probably require assembly language.
+    </p>
+    <p>
+      As a slightly larger benchmark, the "pong" example (basically the VGA output example above plus a "ball" and a
+      "paddle") simulates 420000 cycles (1 full VGA frame) in 1.56 milliseconds, or a bit over 10x faster than realtime.
+      The simulation rate is (420000/0.00156) = ~268 mhz or ~15 cycles per simulation step, and that includes the
+      framebuffer update and support code in SDL, plus whatever overhead comes from running the app in a virtual
+      machine. The UART testbench runs at around 400 Mhz when continuously sending itself a 512-byte message in loopback
+      mode. These are pretty interesting numbers, and they suggest that entire (small) systems with CPU + RAM +
+      peripherals can be simulated in realtime while maintaining simulation accuracy versus a Verilog+FPGA target.
+      Translating GateBoy/LogicBoy to Metron is up next.
+    </p>
+    <p>
+      Metron should make it possible to write small, simple hardware peripherals that simulate in realtime (or faster)
+      on a PC, work flawlessly when compiled for a FPGA, and that are understandable and debuggable by most C++
+      programmers without special tools. I look forward to seeing what people do with it.
+    </p>
+    <p>
+      -Austin Appleby
+    </p>
+
+  </div>
+
+  <script type="text/javascript" src="tutorial_src.js"></script>
+  <script type="module" src="tutorial.js"></script>
+</body>
+
+</html>

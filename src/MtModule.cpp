@@ -113,6 +113,33 @@ MtField *MtModule::get_field(const std::string &name) {
   return nullptr;
 }
 
+MtField *MtModule::get_field(MnNode node) {
+  if (node.sym == sym_subscript_expression) {
+    return get_field(node.get_field(field_argument));
+  }
+
+  if (node.sym == sym_identifier || node.sym == alias_sym_field_identifier) {
+    for (auto f : all_fields) {
+      if (f->name() == node.text()) return f;
+    }
+    return nullptr;
+  }
+  else if (node.sym == sym_field_expression) {
+    auto lhs = node.get_field(field_argument);
+    auto rhs = node.get_field(field_field);
+
+    auto lhs_field = get_field(lhs);
+    if (lhs_field) {
+      return lhs_field->get_field(rhs);
+    } else {
+      return nullptr;
+    }
+  }
+  else {
+    return nullptr;
+  }
+}
+
 MtField *MtModule::get_component(const std::string &name) {
   for (auto f : all_fields) {
     if (!f->is_component()) continue;
@@ -195,11 +222,31 @@ MtField *MtModule::get_output_register(const std::string &name) {
   return nullptr;
 }
 
+
+bool MtModule::is_port(const std::string& name) const {
+  for (auto p : input_signals) {
+    if (p->name() == name) return true;
+  }
+  for (auto p : input_method_params) {
+    if (p->name() == name) return true;
+  }
+  for (auto p : output_signals) {
+    if (p->name() == name) return true;
+  }
+  for (auto p : output_registers) {
+    if (p->name() == name) return true;
+  }
+  for (auto p : output_method_returns) {
+    if (p->name() == name) return true;
+  }
+  return false;
+}
+
 //------------------------------------------------------------------------------
 
 bool MtModule::needs_tick() const {
   for (auto m : all_methods) {
-    if (m->in_tick) return true;
+    if (m->is_tick_) return true;
   }
 
   for (auto f : all_fields) {
@@ -211,8 +258,8 @@ bool MtModule::needs_tick() const {
 
 bool MtModule::needs_tock() const {
   for (auto m : all_methods) {
-    if (m->in_tock) return true;
-    if (m->in_func && m->internal_callers.empty() && m->is_public()) return true;
+    if (m->is_tock_) return true;
+    if (m->is_func_ && m->internal_callers.empty() && m->is_public()) return true;
   }
 
   for (auto f : all_fields) {
@@ -441,9 +488,27 @@ CHECK_RETURN Err MtModule::collect_parts() {
 
   bool in_public = false;
 
+  bool noconvert = false;
+  bool dumpit = false;
+
   for (const auto &n : mod_body) {
+    if (noconvert) {
+      noconvert = false;
+      continue;
+    }
+
+    if (dumpit) { n.dump_tree(); dumpit = false; }
+
     if (n.sym == sym_access_specifier) {
       in_public = n.child(0).text() == "public";
+    }
+
+    if (n.sym == sym_comment && n.contains("metron_internal")) {
+      in_public = false;
+    }
+
+    if (n.sym == sym_comment && n.contains("metron_external")) {
+      in_public = true;
     }
 
     if (n.sym == sym_field_declaration) {
@@ -454,10 +519,12 @@ CHECK_RETURN Err MtModule::collect_parts() {
         all_enums.push_back(e);
       } else {
         auto new_field = new MtField(this, n, in_public);
-        new_field->_type_struct = lib->get_struct(node_type.text());
         all_fields.push_back(new_field);
       }
     }
+
+    if (n.sym == sym_comment && n.contains("metron_noconvert")) noconvert = true;
+    if (n.sym == sym_comment && n.contains("dumpit"))    dumpit = true;
 
     if (n.sym == sym_function_definition) {
       all_methods.push_back(new MtMethod(this, n, in_public));
@@ -603,7 +670,7 @@ CHECK_RETURN Err MtModule::build_call_graph() {
         }
 
         if (func.sym == sym_field_expression) {
-          auto component_name = func.get_field(field_argument).text();
+          auto component_name = func.get_field(field_argument);
           auto component_method_name = func.get_field(field_field).text();
 
           auto component = get_field(component_name);
@@ -662,6 +729,9 @@ CHECK_RETURN Err MtModule::categorize_fields(bool verbose) {
       private_registers.push_back(f);
     }
     else if (f->is_enum()) {
+    }
+    else if (f->is_dead()) {
+      dead_fields.push_back(f);
     }
     else {
       err << ERR("Don't know how to categorize %s = %s\n", f->cname(),

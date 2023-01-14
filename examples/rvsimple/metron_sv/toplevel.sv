@@ -13,9 +13,7 @@
 `include "metron_tools.sv"
 `include "riscv_core.sv"
 
-module toplevel
-#(parameter int foobar = 2)
-(
+module toplevel (
   // global clock
   input logic clock,
   // input signals
@@ -32,6 +30,7 @@ module toplevel
   // tock() ports
   input int tock_bogus_param
 );
+parameter  foobar = 2;
  /*public:*/
 
 

@@ -10,8 +10,6 @@ from os import path
 obj_dir = "obj"
 outfile = open("build.ninja", "w+")
 ninja = ninja_syntax.Writer(outfile)
-#opt_mode = "-O3"
-opt_mode = ""
 
 base_includes = [
     ".",
@@ -34,10 +32,11 @@ def main():
     build_rvtests()
     build_uart()
     build_rvsimple()
-    build_rvtiny()
-    build_rvtiny_sync()
+    # build_pinwheel()
     # build_ibex()
     build_pong()
+    #build_j1()
+    build_gb_spu()
     print("Done!")
     outfile.close()
     outfile = None
@@ -62,6 +61,7 @@ def divider(text):
 
 # ------------------------------------------------------------------------------
 
+"""
 outfile.write(
     "################################################################################\n")
 outfile.write("# Autoupdate this build.ninja from build.py.\n\n")
@@ -73,28 +73,39 @@ ninja.rule(name="autoupdate",
 ninja.build(outputs="build.ninja",
             rule="autoupdate",
             inputs="build.py")
+"""
+
+# ------------------------------------------------------------------------------
+
+divider("Variables")
+
+if ("--release" in sys.argv) or ("-r" in sys.argv):
+    ninja.variable("cpp_build_mode", "-rdynamic -O3")
+else:
+    ninja.variable("cpp_build_mode", "-rdynamic -g -O0")
 
 # ------------------------------------------------------------------------------
 
 divider("Rules")
 
 ninja.rule(name="compile_cpp",
-           command="g++ -rdynamic -g ${opt} -std=gnu++2a ${includes} -MMD -MF ${out}.d -c ${in} -o ${out}",
+           command="g++ ${cpp_build_mode} -std=gnu++2a ${includes} -MMD -MF ${out}.d -c ${in} -o ${out}",
            deps="gcc",
            depfile="${out}.d")
 
 ninja.rule(name="compile_c",
-           command="gcc -rdynamic -g ${opt} ${includes} -MMD -MF ${out}.d -c ${in} -o ${out}",
+           command="gcc ${cpp_build_mode} ${includes} -MMD -MF ${out}.d -c ${in} -o ${out}",
            deps="gcc",
            depfile="${out}.d")
 
-ninja.rule(name="static_lib",    command="ar rcs ${out} ${in} > /dev/null")
+ninja.rule(name="static_lib",
+           command="ar rcs ${out} ${in} > /dev/null")
 
 ninja.rule(name="link",
-           command="g++ -rdynamic -g $opt ${in} -Wl,--whole-archive ${local_libs} -Wl,--no-whole-archive ${global_libs} -o ${out}")
+           command="g++ ${cpp_build_mode} ${in} -Wl,--whole-archive ${local_libs} -Wl,--no-whole-archive ${global_libs} -o ${out}")
 
 ninja.rule(name="metron", # yes, we run metron with quiet and verbose both on for test coverage
-           command="bin/metron -q -v -r ${src_dir} -o ${dst_dir} -s ${src_top}")
+           command="bin/metron -q -v -c ${in} -o ${out}")
 
 ninja.rule(name="verilator",
            command="verilator ${includes} --cc ${src_top} -Mdir ${dst_dir}")
@@ -103,7 +114,7 @@ ninja.rule(name="make",
            command="make --quiet -C ${dst_dir} -f ${makefile} > /dev/null")
 
 ninja.rule(name="run_test",
-           command="${in} | grep \"All tests pass.\" && touch ${out}")
+           command="${in} | grep \"All tests pass\" && touch ${out}")
 
 ninja.rule(name="console",
            command="${in}",
@@ -134,16 +145,16 @@ def metronize_dir(src_dir, src_top, dst_dir):
     divider(f"Metronize {src_dir} -> {dst_dir}")
 
     src_paths = glob.glob(path.join(src_dir, "*.h"))
-    src_files = [path.basename(n) for n in src_paths]
-    dst_paths = [path.join(dst_dir, swap_ext(n, ".sv")) for n in src_files]
+    dst_paths = []
 
-    ninja.build(rule="metron",
-                inputs=src_paths,
-                implicit=["bin/metron"] + src_paths,
-                outputs=dst_paths,
-                src_dir=src_dir,
-                dst_dir=dst_dir,
-                src_top=src_top)
+    for src_path in src_paths:
+        src_dir, src_name = path.split(src_path)
+        dst_path = path.join(dst_dir, swap_ext(src_name, ".sv"))
+        ninja.build(rule="metron",
+                    inputs=[src_path],
+                    implicit=["bin/metron"],
+                    outputs=[dst_path])
+        dst_paths.append(dst_path)
 
     return dst_paths
 
@@ -251,8 +262,11 @@ def build_verilator():
     divider("Verilator libraries")
 
     ninja.build(rule="compile_cpp",
-                inputs="/usr/share/verilator/include/verilated.cpp",
+                inputs="/usr/local/share/verilator/include/verilated.cpp",
                 outputs="obj/verilated.o")
+    ninja.build(rule="compile_cpp",
+                inputs="/usr/local/share/verilator/include/verilated_threads.cpp",
+                outputs="obj/verilated_threads.o")
 
 # ------------------------------------------------------------------------------
 
@@ -299,6 +313,7 @@ def build_metron_lib():
             "src/MtModule.cpp",
             "src/MtNode.cpp",
             "src/MtSourceFile.cpp",
+            "src/MtStruct.cpp",
             "src/MtTracer.cpp",
             "src/MtUtils.cpp",
             "src/Platform.cpp",
@@ -370,12 +385,21 @@ all_test_headers = glob.glob("tests/**/*.h", recursive=True)
 all_example_headers = glob.glob("examples/**/*.h", recursive=True)
 
 ninja.build(outputs = [
-                "docs/app/examples.data",
-                "docs/app/examples.js",
+                "docs/demo/examples.data",
+                "docs/demo/examples.js",
             ],
             rule="command",
             inputs=all_test_headers + all_example_headers,
-            command="python3 $$EMSDK/upstream/emscripten/tools/file_packager.py docs/app/examples.data --no-node --js-output=docs/app/examples.js --preload examples tests/metron_good tests/metron_bad --exclude *.cpp *.sv *.MD *.hex *.pcf *.v *.txt");
+            command="python3 $$EMSDK/upstream/emscripten/tools/file_packager.py docs/demo/examples.data --no-node --js-output=docs/demo/examples.js --preload examples tests/metron_good tests/metron_bad --exclude *.cpp *.sv *.MD *.hex *.pcf *.v *.txt");
+
+
+ninja.build(outputs = [
+                "docs/tutorial/tutorial_src.data",
+                "docs/tutorial/tutorial_src.js",
+            ],
+            rule="command",
+            inputs=glob.glob("examples/tutorial/*.h"),
+            command="python3 $$EMSDK/upstream/emscripten/tools/file_packager.py docs/tutorial/tutorial_src.data --no-node --js-output=docs/tutorial/tutorial_src.js --preload examples/tutorial examples/uart/metron");
 
 treesitter_objs_wasi = [];
 
@@ -449,6 +473,7 @@ cpp_binary2(
         "src/MtModule.cpp",
         "src/MtNode.cpp",
         "src/MtSourceFile.cpp",
+        "src/MtStruct.cpp",
         "src/MtTracer.cpp",
         "src/MtUtils.cpp",
     ],
@@ -477,16 +502,62 @@ def build_metron_test():
     )
 
 # ------------------------------------------------------------------------------
-# Simple Uart testbench
 
+def build_j1():
+    cpp_binary(
+        bin_name="bin/examples/j1",
+        src_files=[
+            "examples/j1/main.cpp",
+        ],
+        includes=["src"],
+        src_objs=[],
+        link_deps=["bin/libmetron.a"],
+    )
+    j1_srcs = metronize_dir("examples/j1/metron", "j1.h", "examples/j1/metron_sv")
+
+# ------------------------------------------------------------------------------
+
+def build_gb_spu():
+    gb_spu_srcs = metronize_dir("examples/gb_spu/metron", "MetroBoySPU2.h", "examples/gb_spu/metron_sv")
+    gb_spu_vhdr, gb_spu_vobj = verilate_dir(
+        src_dir="examples/gb_spu/metron_sv",
+        src_files=gb_spu_srcs,
+        src_top="MetroBoySPU2",
+        dst_dir="gen/examples/gb_spu/metron_vl",
+    )
+    cpp_binary(
+        bin_name="bin/examples/gb_spu",
+        src_files=["examples/gb_spu/gb_spu_main.cpp"],
+        includes=base_includes + ["gen/examples/gb_spu"],
+        src_objs=["obj/verilated.o", "obj/verilated_threads.o", gb_spu_vobj],
+        deps=[gb_spu_vhdr],
+        link_deps=["bin/libmetron.a"],
+    )
+    """
+    cpp_binary(
+        bin_name="bin/examples/uart_vl",
+        src_files=["examples/uart/main_vl.cpp"],
+        includes=base_includes + ["gen/examples/uart"],
+        src_objs=["obj/verilated.o", "obj/verilated_threads.o", uart_vobj],
+        deps=[uart_vhdr],
+        link_deps=["bin/libmetron.a"],
+    )
+    """
+
+
+# ------------------------------------------------------------------------------
+# Simple Uart testbench
 
 def build_uart():
     cpp_binary(
         bin_name="bin/examples/uart",
-        src_files=["examples/uart/main.cpp"],
+        src_files=[
+            "examples/uart/main.cpp",
+        ],
         includes=["src"],
         # FIXME Why the F does the build break if I don't pass an empty array here?
         src_objs=[],
+        link_deps=["bin/libmetron.a"],
     )
 
     uart_srcs = metronize_dir("examples/uart/metron", "uart_top.h",
@@ -503,8 +574,9 @@ def build_uart():
         bin_name="bin/examples/uart_vl",
         src_files=["examples/uart/main_vl.cpp"],
         includes=base_includes + ["gen/examples/uart"],
-        src_objs=["obj/verilated.o", uart_vobj],
-        deps=[uart_vhdr]
+        src_objs=["obj/verilated.o", "obj/verilated_threads.o", uart_vobj],
+        deps=[uart_vhdr],
+        link_deps=["bin/libmetron.a"],
     )
 
     divider("Icarus Verilog uart testbench")
@@ -571,7 +643,6 @@ def build_rvsimple():
         bin_name="bin/examples/rvsimple",
         src_files=["examples/rvsimple/main.cpp"],
         includes=base_includes,
-        opt=opt_mode,
         link_deps=["bin/libmetron.a"],
     )
 
@@ -588,7 +659,7 @@ def build_rvsimple():
         bin_name="bin/examples/rvsimple_vl",
         src_files=["examples/rvsimple/main_vl.cpp"],
         includes=base_includes + [vl_root],
-        src_objs=["obj/verilated.o", vl_vobj],
+        src_objs=["obj/verilated.o", "obj/verilated_threads.o", vl_vobj],
         deps=[vl_vhdr],
         link_deps=["bin/libmetron.a"],
     )
@@ -607,80 +678,46 @@ def build_rvsimple():
         bin_name="bin/examples/rvsimple_ref",
         src_files=["examples/rvsimple/main_ref_vl.cpp"],
         includes=base_includes + [ref_vl_root],
-        src_objs=["obj/verilated.o", ref_vobj],
+        src_objs=["obj/verilated.o", "obj/verilated_threads.o", ref_vobj],
         deps=[ref_vhdr],
         link_deps=["bin/libmetron.a"],
     )
 
 
 # ------------------------------------------------------------------------------
-# RVTiny
+# Pinwheel
 
-def build_rvtiny():
-    mt_root = "examples/rvtiny/metron"
-    sv_root = "examples/rvtiny/metron_sv"
-    vl_root = "gen/examples/rvtiny/metron_vl"
+def build_pinwheel():
+    mt_root = "examples/pinwheel/metron"
+    sv_root = "examples/pinwheel/metron_sv"
+    vl_root = "gen/examples/pinwheel/metron_vl"
 
     cpp_binary(
-        bin_name="bin/examples/rvtiny",
-        src_files=["examples/rvtiny/main.cpp"],
+        bin_name="bin/examples/pinwheel",
+        src_files=["examples/pinwheel/main.cpp"],
         includes=base_includes + [mt_root],
         link_deps=["bin/libmetron.a"],
-        opt=opt_mode,
     )
 
-    rvtiny_sv_srcs = metronize_dir(mt_root, "toplevel.h", sv_root)
+    """
+    pinwheel_sv_srcs = metronize_dir(mt_root, "pinwheel.h", sv_root)
 
-    rvtiny_vl_vhdr, rvtiny_vl_vobj = verilate_dir(
+    pinwheel_vl_vhdr, pinwheel_vl_vobj = verilate_dir(
         src_dir=sv_root,
-        src_files=rvtiny_sv_srcs,
-        src_top="toplevel",
+        src_files=pinwheel_sv_srcs,
+        src_top="pinwheel",
         dst_dir=vl_root
     )
 
     cpp_binary(
-        bin_name="bin/examples/rvtiny_vl",
-        src_files=["examples/rvtiny/main_vl.cpp"],
+        bin_name="bin/examples/pinwheel_vl",
+        src_files=["examples/pinwheel/main_vl.cpp"],
         includes=base_includes + [vl_root],
-        src_objs=["obj/verilated.o", rvtiny_vl_vobj],
-        deps=[rvtiny_vl_vhdr],
+        src_objs=["obj/verilated.o", "obj/verilated_threads.o", pinwheel_vl_vobj],
+        deps=[pinwheel_vl_vhdr],
         link_deps=["bin/libmetron.a"],
     )
-
-
-# ------------------------------------------------------------------------------
-# RVTiny_Sync - synchronous-mem-only version of RVTiny
-
-def build_rvtiny_sync():
-    mt_root = "examples/rvtiny_sync/metron"
-    sv_root = "examples/rvtiny_sync/metron_sv"
-    vl_root = "gen/examples/rvtiny_sync/metron_vl"
-
-    cpp_binary(
-        bin_name="bin/examples/rvtiny_sync",
-        src_files=["examples/rvtiny_sync/main.cpp"],
-        includes=base_includes,
-        link_deps=["bin/libmetron.a"],
-        opt=opt_mode,
-    )
-
-    metronized_src = metronize_dir(mt_root, "toplevel.h", sv_root)
-
-    verilated_h, verilated_o = verilate_dir(
-        src_dir=sv_root,
-        src_files=metronized_src,
-        src_top="toplevel",
-        dst_dir=vl_root
-    )
-
-    cpp_binary(
-        bin_name="bin/examples/rvtiny_sync_vl",
-        src_files=["examples/rvtiny_sync/main_vl.cpp"],
-        includes=base_includes + [vl_root],
-        src_objs=["obj/verilated.o", verilated_o],
-        deps=[verilated_h],
-        link_deps=["bin/libmetron.a"],
-    )
+    """
 
 # ------------------------------------------------------------------------------
 # Ibex
@@ -691,7 +728,6 @@ def build_ibex():
         bin_name="bin/examples/ibex",
         src_files=["examples/ibex/main.cpp"],
         includes=base_includes,
-        opt=opt_mode,
     )
 
 # ------------------------------------------------------------------------------
@@ -708,34 +744,10 @@ def build_pong():
         src_files=["examples/pong/main.cpp"],
         includes=base_includes,
         global_libs="-lSDL2",
-        opt=opt_mode,
         link_deps=["bin/libmetron.a"],
     )
 
     metronized_src = metronize_dir(mt_root, "pong.h", sv_root)
-
-    """
-    rvtiny_sync_metron_vl_h, rvtiny_sync_metron_vl_o = verilate_dir(
-        src_dir="examples/rvtiny_sync/metron_sv",
-        src_files=rvtiny_sync_metron_sv,
-        src_top="toplevel",
-        dst_dir="examples/rvtiny_sync/metron_vl"
-    )
-
-    cpp_binary(
-        bin_name="bin/examples/rvtiny_sync_vl",
-        src_files=["examples/rvtiny_sync/main_vl.cpp"],
-        includes=[
-            ".",
-            "src",
-            "obj/examples/rvtiny_sync",
-            "/usr/local/share/verilator/include"
-        ],
-        src_objs=["obj/verilated.o", rvtiny_sync_metron_vl_o],
-        deps=[rvtiny_sync_metron_vl_h]
-    )
-    """
-
 
 # ------------------------------------------------------------------------------
 
