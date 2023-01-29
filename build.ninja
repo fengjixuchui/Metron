@@ -27,7 +27,7 @@ rule link
 rule metron
   command = bin/metron -q -v -c ${in} -o ${out}
 rule verilator
-  command = verilator ${includes} --cc ${src_top} -Mdir ${dst_dir}
+  command = verilator --public ${includes} --cc ${src_top} -Mdir ${dst_dir}
 rule make
   command = make --quiet -C ${dst_dir} -f ${makefile} > /dev/null
 rule run_test
@@ -65,7 +65,6 @@ rule link_ems
 packager = $EMSDK/upstream/emscripten/tools/file_packager.py
 build docs/demo/examples.data docs/demo/examples.js: command tests/Tests.h $
     tests/test_utils.h tests/metron_broken/bad_increment.h $
-    tests/metron_bad/constructor_has_params.h $
     tests/metron_bad/if_with_no_compound.h $
     tests/metron_bad/mid_block_break.h tests/metron_bad/basic_sig_wrw.h $
     tests/metron_bad/mid_block_return.h tests/metron_bad/too_many_breaks.h $
@@ -86,6 +85,7 @@ build docs/demo/examples.data docs/demo/examples.js: command tests/Tests.h $
     tests/metron_good/defines.h tests/metron_good/bit_concat.h $
     tests/metron_good/basic_public_sig.h tests/metron_good/good_order.h $
     tests/metron_good/basic_template.h tests/metron_good/plus_equals.h $
+    tests/metron_good/initialize_struct_to_zero.h $
     tests/metron_good/bit_casts.h tests/metron_good/call_tick_from_tock.h $
     tests/metron_good/utf8-mod.bom.h tests/metron_good/basic_submod_param.h $
     tests/metron_good/tock_task.h tests/metron_good/basic_sig_wwr.h $
@@ -98,7 +98,8 @@ build docs/demo/examples.data docs/demo/examples.js: command tests/Tests.h $
     tests/metron_good/basic_public_reg.h $
     tests/metron_good/constructor_arg_passing.h $
     tests/metron_good/basic_literals.h tests/metron_good/basic_switch.h $
-    tests/metron_good/bit_dup.h tests/metron_good/utf8-mod.h $
+    tests/metron_good/bit_dup.h tests/metron_good/structs_as_ports.h $
+    tests/metron_good/structs_as_args.h tests/metron_good/utf8-mod.h $
     tests/metron_good/local_localparam.h tests/metron_good/minimal.h $
     tests/metron_good/multi_tick.h tests/metron_good/basic_reg_rww.h $
     tests/metron_good/namespaces.h tests/metron_good/structs.h $
@@ -203,6 +204,8 @@ build wasm/obj/src/MtField.o: compile_cpp_ems src/MtField.cpp
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 build wasm/obj/src/MtFuncParam.o: compile_cpp_ems src/MtFuncParam.cpp
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
+build wasm/obj/src/MtInstance.o: compile_cpp_ems src/MtInstance.cpp
+  includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 build wasm/obj/src/MtMethod.o: compile_cpp_ems src/MtMethod.cpp
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 build wasm/obj/src/MtModLibrary.o: compile_cpp_ems src/MtModLibrary.cpp
@@ -219,6 +222,8 @@ build wasm/obj/src/MtStruct.o: compile_cpp_ems src/MtStruct.cpp
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 build wasm/obj/src/MtTracer.o: compile_cpp_ems src/MtTracer.cpp
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
+build wasm/obj/src/MtTracer2.o: compile_cpp_ems src/MtTracer2.cpp
+  includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 build wasm/obj/src/MtUtils.o: compile_cpp_ems src/MtUtils.cpp
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 build docs/app/metron.js: link_ems $
@@ -228,11 +233,11 @@ build docs/app/metron.js: link_ems $
     wasm/obj/src/MetronApp.o wasm/obj/src/Platform.o wasm/obj/src/Err.o $
     wasm/obj/src/MtChecker.o wasm/obj/src/MtContext.o $
     wasm/obj/src/MtCursor.o wasm/obj/src/MtField.o $
-    wasm/obj/src/MtFuncParam.o wasm/obj/src/MtMethod.o $
-    wasm/obj/src/MtModLibrary.o wasm/obj/src/MtModParam.o $
-    wasm/obj/src/MtModule.o wasm/obj/src/MtNode.o $
+    wasm/obj/src/MtFuncParam.o wasm/obj/src/MtInstance.o $
+    wasm/obj/src/MtMethod.o wasm/obj/src/MtModLibrary.o $
+    wasm/obj/src/MtModParam.o wasm/obj/src/MtModule.o wasm/obj/src/MtNode.o $
     wasm/obj/src/MtSourceFile.o wasm/obj/src/MtStruct.o $
-    wasm/obj/src/MtTracer.o wasm/obj/src/MtUtils.o
+    wasm/obj/src/MtTracer.o wasm/obj/src/MtTracer2.o wasm/obj/src/MtUtils.o
   includes = -I. -Isrc -Isubmodules/tree-sitter/lib/include
 
 
@@ -274,6 +279,8 @@ build obj/src/MtField.o: compile_cpp src/MtField.cpp
   includes = -I. -Isubmodules/tree-sitter/lib/include
 build obj/src/MtFuncParam.o: compile_cpp src/MtFuncParam.cpp
   includes = -I. -Isubmodules/tree-sitter/lib/include
+build obj/src/MtInstance.o: compile_cpp src/MtInstance.cpp
+  includes = -I. -Isubmodules/tree-sitter/lib/include
 build obj/src/MtMethod.o: compile_cpp src/MtMethod.cpp
   includes = -I. -Isubmodules/tree-sitter/lib/include
 build obj/src/MtModLibrary.o: compile_cpp src/MtModLibrary.cpp
@@ -290,6 +297,8 @@ build obj/src/MtStruct.o: compile_cpp src/MtStruct.cpp
   includes = -I. -Isubmodules/tree-sitter/lib/include
 build obj/src/MtTracer.o: compile_cpp src/MtTracer.cpp
   includes = -I. -Isubmodules/tree-sitter/lib/include
+build obj/src/MtTracer2.o: compile_cpp src/MtTracer2.cpp
+  includes = -I. -Isubmodules/tree-sitter/lib/include
 build obj/src/MtUtils.o: compile_cpp src/MtUtils.cpp
   includes = -I. -Isubmodules/tree-sitter/lib/include
 build obj/src/Platform.o: compile_cpp src/Platform.cpp
@@ -298,10 +307,11 @@ build bin/libmetron.a: static_lib obj/submodules/tree-sitter/lib/src/lib.o $
     obj/submodules/tree-sitter-cpp/src/parser.o $
     obj/submodules/tree-sitter-cpp/src/scanner.o obj/src/Err.o $
     obj/src/MtChecker.o obj/src/MtContext.o obj/src/MtCursor.o $
-    obj/src/MtField.o obj/src/MtFuncParam.o obj/src/MtMethod.o $
-    obj/src/MtModLibrary.o obj/src/MtModParam.o obj/src/MtModule.o $
-    obj/src/MtNode.o obj/src/MtSourceFile.o obj/src/MtStruct.o $
-    obj/src/MtTracer.o obj/src/MtUtils.o obj/src/Platform.o
+    obj/src/MtField.o obj/src/MtFuncParam.o obj/src/MtInstance.o $
+    obj/src/MtMethod.o obj/src/MtModLibrary.o obj/src/MtModParam.o $
+    obj/src/MtModule.o obj/src/MtNode.o obj/src/MtSourceFile.o $
+    obj/src/MtStruct.o obj/src/MtTracer.o obj/src/MtTracer2.o $
+    obj/src/MtUtils.o obj/src/Platform.o
   includes = -I. -Isubmodules/tree-sitter/lib/include
 
 

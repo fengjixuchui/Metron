@@ -19,11 +19,19 @@ module example_text_memory_bus (
 );
  /*public:*/
 
+  parameter filename = "";
+  initial
+  begin
+  end
+
  /*private:*/
-  example_text_memory text_memory(
-    // input signals
+  example_text_memory #(
+    // Constructor Parameters
+    .filename(filename)
+  ) text_memory(
+    // Input signals
     .address(text_memory_address),
-    // output signals
+    // Output signals
     .q(text_memory_q)
   );
   logic[rv_config::TEXT_BITS - 2-1:0] text_memory_address;

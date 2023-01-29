@@ -19,14 +19,12 @@ struct MtModLibrary {
   void add_search_path(const std::string& path);
   void add_source(MtSourceFile* source_file);
 
-  CHECK_RETURN Err load_source(const char* name, MtSourceFile*& out_source,
-                               bool verbose);
+  CHECK_RETURN Err load_source(const char* name, MtSourceFile*& out_source);
   CHECK_RETURN Err load_blob(const std::string& filename,
                              const std::string& full_path,
                              void* src_blob, int src_len,
                              MtSourceFile*& out_source,
-                             bool use_utf8_bom,
-                             bool verbose);
+                             bool use_utf8_bom);
 
   MtStruct* get_struct(const std::string& name) const;
 
@@ -39,19 +37,15 @@ struct MtModLibrary {
   CHECK_RETURN Err propagate(propagate_visitor v);
 
 
-  void dump();
-
-  void dump_call_graph();
-
+  void dump_lib();
   void teardown();
 
   //----------
 
   std::vector<std::string> search_paths;
   std::vector<MtSourceFile*> source_files;
-  std::vector<MtModule*> modules;
-
-  std::vector<MtStruct*> structs;
+  std::vector<MtModule*> all_modules;
+  std::vector<MtStruct*> all_structs;
 };
 
 //------------------------------------------------------------------------------

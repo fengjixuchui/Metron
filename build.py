@@ -108,7 +108,7 @@ ninja.rule(name="metron", # yes, we run metron with quiet and verbose both on fo
            command="bin/metron -q -v -c ${in} -o ${out}")
 
 ninja.rule(name="verilator",
-           command="verilator ${includes} --cc ${src_top} -Mdir ${dst_dir}")
+           command="verilator --public ${includes} --cc ${src_top} -Mdir ${dst_dir}")
 
 ninja.rule(name="make",
            command="make --quiet -C ${dst_dir} -f ${makefile} > /dev/null")
@@ -307,6 +307,7 @@ def build_metron_lib():
             "src/MtCursor.cpp",
             "src/MtField.cpp",
             "src/MtFuncParam.cpp",
+            "src/MtInstance.cpp",
             "src/MtMethod.cpp",
             "src/MtModLibrary.cpp",
             "src/MtModParam.cpp",
@@ -315,6 +316,7 @@ def build_metron_lib():
             "src/MtSourceFile.cpp",
             "src/MtStruct.cpp",
             "src/MtTracer.cpp",
+            "src/MtTracer2.cpp",
             "src/MtUtils.cpp",
             "src/Platform.cpp",
         ],
@@ -375,8 +377,6 @@ ninja.rule(name="compile_cpp_ems",
 
 ninja.rule(name="link_ems",
            command="emcc ${in} -sEXPORT_ES6 -sEXPORTED_RUNTIME_METHODS=['FS','callMain'] -sNO_DISABLE_EXCEPTION_CATCHING -sTOTAL_STACK=32MB -sINITIAL_MEMORY=64MB -sFORCE_FILESYSTEM -o ${out}")
-
-#python3 $EMSDK/upstream/emscripten/tools/file_packager.py wasm/examples.data --lz4 --no-node --js-output=wasm/examples.js --preload examples tests/metron_good tests/metron_bad --exclude *.cpp *.sv *.MD *.hex *.pcf *.v *.txt
 
 ninja.variable(key="packager",
                value="$EMSDK/upstream/emscripten/tools/file_packager.py")
@@ -467,6 +467,7 @@ cpp_binary2(
         "src/MtCursor.cpp",
         "src/MtField.cpp",
         "src/MtFuncParam.cpp",
+        "src/MtInstance.cpp",
         "src/MtMethod.cpp",
         "src/MtModLibrary.cpp",
         "src/MtModParam.cpp",
@@ -475,6 +476,7 @@ cpp_binary2(
         "src/MtSourceFile.cpp",
         "src/MtStruct.cpp",
         "src/MtTracer.cpp",
+        "src/MtTracer2.cpp",
         "src/MtUtils.cpp",
     ],
     src_objs=treesitter_objs_wasi,
@@ -533,16 +535,6 @@ def build_gb_spu():
         deps=[gb_spu_vhdr],
         link_deps=["bin/libmetron.a"],
     )
-    """
-    cpp_binary(
-        bin_name="bin/examples/uart_vl",
-        src_files=["examples/uart/main_vl.cpp"],
-        includes=base_includes + ["gen/examples/uart"],
-        src_objs=["obj/verilated.o", "obj/verilated_threads.o", uart_vobj],
-        deps=[uart_vhdr],
-        link_deps=["bin/libmetron.a"],
-    )
-    """
 
 
 # ------------------------------------------------------------------------------
@@ -555,8 +547,6 @@ def build_uart():
             "examples/uart/main.cpp",
         ],
         includes=["src"],
-        # FIXME Why the F does the build break if I don't pass an empty array here?
-        src_objs=[],
         link_deps=["bin/libmetron.a"],
     )
 

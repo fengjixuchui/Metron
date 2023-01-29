@@ -13,55 +13,57 @@ struct MtField {
   MtField(MtModule* _parent_mod, const MnNode& n, bool is_public);
   MtField(MtStruct* _parent_struct, const MnNode& n);
 
+  MnNode get_type_node() const;
+  MnNode get_decl_node() const;
+
   const char* cname() const;
   const std::string& name() const;
   const std::string& type_name() const;
 
+  bool is_enum() const;
+  bool is_array() const;
   bool is_component() const;
   bool is_struct() const;
   bool is_param() const;
   bool is_public() const;
-  bool is_port() const {
-    return is_public();
-  }
+  bool is_private() const;
 
-  bool is_input() const { return _state == CTX_INPUT; }
-  bool is_register() const {
-    return _state == CTX_REGISTER || _state == CTX_MAYBE;
-  }
-  bool is_signal() const { return _state == CTX_OUTPUT || _state == CTX_SIGNAL; }
-  bool is_dead() const { return _state == CTX_NONE; }
-  bool is_public_input() const { return _public && is_input(); }
-  bool is_public_signal() const { return _public && is_signal(); }
-  bool is_public_register() const { return _public && is_register(); }
-  bool is_private_signal() const { return !_public && is_signal(); }
-  bool is_private_register() const { return !_public && is_register(); }
+  bool is_port() const;
+  bool is_input() const;
+  bool is_register() const;
+  bool is_signal() const;
+  bool is_dead() const;
 
-  MnNode get_type_node() const { return _node.get_field(field_type); }
-  MnNode get_decl_node() const { return _node.get_field(field_declarator); }
-
-  bool is_enum() { return _node.sym == sym_enum_specifier; }
-
-  MtField* get_field(MnNode node);
+  MtField* get_subfield(MnNode node);
 
   void dump() const;
+  void error() const;
 
   //----------
 
-  MnNode _node;
+  TraceState _state = CTX_PENDING;
 
-  std::string _name;
-  std::string _type;
-  bool _public = false;
-  bool _is_enum = false;
-
+  // The module or structure that this field is a child of.
   MtModule* _parent_mod = nullptr;
-  MtModule* _type_mod = nullptr;
-
   MtStruct* _parent_struct = nullptr;
+
+  // The module or structure that this field is an instance of.
+  MtModule* _type_mod = nullptr;
   MtStruct* _type_struct = nullptr;
 
-  ContextState _state = CTX_PENDING;
+private:
+
+  MnNode _node;
+  MnNode _type;
+  MnNode _decl;
+
+  std::string _name;
+  std::string _type_name;
+
+  bool _static = false;
+  bool _const = false;
+  bool _public = false;
+  bool _enum = false;
 };
 
 //------------------------------------------------------------------------------

@@ -13,7 +13,6 @@
 #include "metron_tools.h"
 #include "riscv_core.h"
 
-template <int foobar = 2>
 class toplevel {
  public:
   logic<1> reset;
@@ -26,6 +25,12 @@ class toplevel {
 
   logic<32> inst;
   logic<32> pc;
+
+  toplevel(const char* text_filename = nullptr, const char* data_filename = nullptr)
+  : text_memory_bus(text_filename),
+    data_memory_bus(data_filename)
+  {
+  }
 
   //----------------------------------------
 
@@ -65,6 +70,7 @@ class toplevel {
 
  private:
   riscv_core core;
+
   example_text_memory_bus text_memory_bus;
   example_data_memory_bus data_memory_bus;
 };

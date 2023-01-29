@@ -52,7 +52,7 @@ MtContext::MtContext(MtContext *_parent, MtField *_field) {
   assert(_parent);
   assert(_field);
 
-  name = _field->_name;
+  name = _field->name();
 
   if (_field->is_component()) {
     context_type = CTX_COMPONENT;
@@ -137,35 +137,6 @@ MtContext *MtContext::construct_return(MtContext *_parent) {
 
 //------------------------------------------------------------------------------
 
-/*
-MtContext *MtContext::clone() {
-  MtContext *result = new MtContext();
-
-  result->name = name;
-  result->context_type = context_type;
-  result->parent = parent;
-
-  result->field = field;
-  result->method = method;
-
-  result->parent_mod = parent_mod;
-  result->parent_struct = parent_struct;
-
-  result->type_mod = type_mod;
-  result->type_struct = type_struct;
-
-  for (auto c : children) {
-    result->children.push_back(c->clone());
-  }
-
-  result->action_log = action_log;
-
-  return result;
-}
-*/
-
-//------------------------------------------------------------------------------
-
 std::string MtContext::get_path() const {
   if (parent) {
     return parent->get_path() + "." + name;
@@ -223,63 +194,6 @@ void MtContext::instantiate() {
     c->instantiate();
   }
 }
-
-/*
-void MtContext::instantiate(MtModule *_mod, MtContext *parent) {
-  for (auto f : _mod->all_fields) {
-    MtContext *result = new MtContext(parent, f);
-
-    if (result->mod) {
-      instantiate(result->mod, result);
-    }
-
-    if (result->_struct) {
-      instantiate(result->_struct, result);
-    }
-
-    parent->children.push_back(result);
-  }
-
-  for (auto m : _mod->all_methods) {
-    MtContext *method_ctx = new MtContext(parent, m);
-
-    parent->children.push_back(method_ctx);
-
-    if (m->has_params()) {
-      auto params =
-          m->_node.get_field(field_declarator).get_field(field_parameters);
-      for (const auto &param : params) {
-        if (param.sym == sym_parameter_declaration) {
-          MtContext *param_ctx = MtContext::param(
-              method_ctx, param.get_field(field_declarator).text());
-          method_ctx->children.push_back(param_ctx);
-        }
-      }
-    }
-
-    if (m->has_return()) {
-      MtContext *return_ctx = MtContext::construct_return(method_ctx);
-      method_ctx->children.push_back(return_ctx);
-    }
-  }
-}
-*/
-
-//------------------------------------------------------------------------------
-
-/*
-void MtContext::instantiate(MtStruct *_struct, MtContext *parent) {
-  for (auto f : _struct->fields) {
-    MtContext *result = new MtContext(parent, f);
-
-    if (result->_type_struct) {
-      instantiate(result->mod, result);
-    }
-
-    parent->children.push_back(result);
-  }
-}
-*/
 
 //------------------------------------------------------------------------------
 
@@ -358,7 +272,7 @@ MtContext *MtContext::resolve(MnNode node) {
 
 //------------------------------------------------------------------------------
 
-void log_state(ContextState s) {
+void log_state(TraceState s) {
   if (s == CTX_SIGNAL || s == CTX_OUTPUT) {
     LOG_B("%s", to_string(s));
   } else if (s == CTX_NONE) {

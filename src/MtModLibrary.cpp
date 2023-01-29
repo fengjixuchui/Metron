@@ -20,7 +20,7 @@ std::vector<std::string> split_field_path(const std::string &path);
 //------------------------------------------------------------------------------
 
 MtModule *MtModLibrary::get_module(const std::string &name) {
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     if (mod->mod_name == name) return mod;
   }
   return nullptr;
@@ -36,8 +36,9 @@ MtSourceFile *MtModLibrary::get_source(const std::string &name) {
 //------------------------------------------------------------------------------
 
 void MtModLibrary::teardown() {
-  modules.clear();
   for (auto s : source_files) delete s;
+  for (auto m : all_modules) delete m;
+  for (auto s : all_structs) delete s;
 }
 
 //------------------------------------------------------------------------------
@@ -58,11 +59,8 @@ void MtModLibrary::add_source(MtSourceFile *source_file) {
 std::vector<std::string> split_path(const std::string& input);
 
 CHECK_RETURN Err MtModLibrary::load_source(const char *filename,
-                                           MtSourceFile *&out_source,
-                                           bool verbose) {
+                                           MtSourceFile *&out_source) {
   Err err;
-
-  //LOG_R("MtModLibrary::load_source %s\n", filename);
 
   if (!std::string(filename).ends_with(".h")) {
     return err << ERR("Source file %s does not end with .h\n", filename);
@@ -76,17 +74,10 @@ CHECK_RETURN Err MtModLibrary::load_source(const char *filename,
   for (auto &path : search_paths) {
     auto full_path = path.size() ? path + "/" + filename : filename;
 
-    /*
-    if (full_path.starts_with(".")) {
-      printf("relative to cwd\n");
-    }
-    */
-
     struct stat s;
     auto stat_result = stat(full_path.c_str(), &s);
     if (stat_result == 0) {
       found = true;
-      //if (verbose) LOG_B("Loading %s from %s\n", filename, full_path.c_str());
       LOG_B("Loading %s from %s\n", filename, full_path.c_str());
       LOG_INDENT_SCOPE();
 
@@ -103,7 +94,7 @@ CHECK_RETURN Err MtModLibrary::load_source(const char *filename,
         use_utf8_bom = true;
         src_blob.erase(src_blob.begin(), src_blob.begin() + 3);
       }
-      err << load_blob(filename, full_path, src_blob.data(), src_blob.size(), out_source, use_utf8_bom, verbose);
+      err << load_blob(filename, full_path, src_blob.data(), src_blob.size(), out_source, use_utf8_bom);
 
       break;
     }
@@ -123,7 +114,7 @@ CHECK_RETURN Err MtModLibrary::load_blob(const std::string &filename,
                                          void* src_blob,
                                          int src_len,
                                          MtSourceFile*& out_source,
-                                         bool use_utf8_bom, bool verbose) {
+                                         bool use_utf8_bom) {
   Err err;
 
   auto source_file = new MtSourceFile();
@@ -162,10 +153,10 @@ CHECK_RETURN Err MtModLibrary::load_blob(const std::string &filename,
 
     if (!get_source(file)) {
       MtSourceFile *source = nullptr;
-      err << load_source(file.c_str(), source, verbose);
+      err << load_source(file.c_str(), source);
     }
 
-    source_file->includes.push_back(get_source(file));
+    source_file->src_includes.push_back(get_source(file));
   }
 
   out_source = source_file;
@@ -175,12 +166,12 @@ CHECK_RETURN Err MtModLibrary::load_blob(const std::string &filename,
 
 //------------------------------------------------------------------------------
 
-void MtModLibrary::dump() {
+void MtModLibrary::dump_lib() {
   LOG_G("Mod library:\n");
   LOG_INDENT_SCOPE();
-  for (auto s : source_files) {
-    s->dump();
-  }
+
+  for (auto m : all_modules) m->dump_module();
+  for (auto s : all_structs) s->dump_struct();
 }
 
 //------------------------------------------------------------------------------
@@ -193,7 +184,7 @@ CHECK_RETURN Err MtModLibrary::propagate(propagate_visitor v) {
   do {
     passes++;
     changes = 0;
-    for (auto mod : modules) {
+    for (auto mod : all_modules) {
       for (auto m : mod->all_methods) {
         if (!m->categorized()) {
           changes += v(m);
@@ -208,24 +199,10 @@ CHECK_RETURN Err MtModLibrary::propagate(propagate_visitor v) {
 //------------------------------------------------------------------------------
 
 MtStruct* MtModLibrary::get_struct(const std::string& name) const {
-  for (auto s : structs) {
+  for (auto s : all_structs) {
     if (s->name == name) return s;
   }
   return nullptr;
-}
-
-//------------------------------------------------------------------------------
-
-CHECK_RETURN Err MtModLibrary::collect_structs() {
-  Err err;
-
-  for (auto source : source_files) {
-    for (auto s : source->structs) {
-      structs.push_back(s);
-    }
-  }
-
-  return err;
 }
 
 //------------------------------------------------------------------------------
@@ -237,7 +214,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   // Trace done, all our fields should have a state assigned. Categorize the
   // methods.
 
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     for (auto m : mod->all_methods) {
       if (m->is_constructor()) {
         if (mod->constructor) {
@@ -252,7 +229,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   //----------------------------------------
   // Methods named "tick" are ticks, etc.
 
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     for (auto m : mod->all_methods) {
       //if (m->name().starts_with("init")) m->is_init_ = true;
       if (m->name().starts_with("tick")) m->is_tick_ = true;
@@ -375,18 +352,6 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
     return 0;
   });
 
-
-
-
-
-
-
-
-
-
-
-
-
   //----------------------------------------
   // Methods that write outputs are tocks unless they're already ticks.
 
@@ -434,7 +399,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   //----------------------------------------
   // Methods categorized, we can assign emit types
 
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     for (auto m : mod->all_methods) {
 
       if (m->is_constructor()) {
@@ -472,7 +437,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   //----------------------------------------
   // Methods categorized, we can split up internal_callers
 
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     for (auto m : mod->all_methods) {
       for (auto c : m->internal_callers) {
         if (c->is_tick_) m->tick_callers.insert(c);
@@ -485,7 +450,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   //----------------------------------------
   // Methods categorized, now we can categorize the inputs of the methods.
 
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     for (auto m : mod->all_methods) {
       if (!m->is_public()) continue;
 
@@ -507,7 +472,7 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
   //----------------------------------------
   // Check for ticks with return values.
 
-  for (auto mod : modules) {
+  for (auto mod : all_modules) {
     for (auto m : mod->all_methods) {
       if (m->is_tick_ && m->has_return()) {
         err << ERR("Tick method %s.%s is not allowed to have a return value.\n",
@@ -523,95 +488,3 @@ CHECK_RETURN Err MtModLibrary::categorize_methods(bool verbose) {
 }
 
 //------------------------------------------------------------------------------
-
-// KCOV_OFF
-void MtModLibrary::dump_call_graph() {
-  LOG_G("Call graph:\n");
-
-  std::function<void(MtModule *, MtMethod *)> dump_call_tree =
-      [&](MtModule *mod, MtMethod *method) {
-        uint32_t color = 0x808080;
-
-        if (method->is_init_) color = 0x8080FF;
-        if (method->is_tick_) color = 0x80FF80;
-        if (method->is_tock_) color = 0xFF8080;
-        if (method->is_func_) color = 0xFFFFFF;
-
-        if (!method->is_valid()) color = 0x808080;
-
-        LOG_C(color, " %s.%s()\n", mod->cname(), method->cname());
-
-        LOG_INDENT_SCOPE();
-        for (auto callee : method->internal_callees) {
-          dump_call_tree(callee->_mod, callee);
-        }
-      };
-
-  /*
-  for (auto mod : modules) {
-    if (mod->parents.size()) continue;
-    for (auto method : mod->all_methods) {
-      if (method->callers.empty()) {
-        LOG_INDENT_SCOPE();
-        dump_call_tree(mod, method);
-      }
-    }
-  }
-  */
-}
-// KCOV_ON
-
-//------------------------------------------------------------------------------
-
-#if 0
-//----------------------------------------
-// Dump stuff
-
-if (parents.empty()) {
-  LOG_B("Dumping %s trace\n", cname());
-  LOG_INDENT_SCOPE();
-  MtTracer::dump_trace(mod_state);
-}
-
-LOG_B("Dumping %s\n", cname());
-LOG_INDENT_SCOPE();
-for (auto method : all_methods) {
-  if (method->in_init) continue;
-  LOG_B("Dumping %s.%s\n", cname(), method->cname());
-  LOG_INDENT_SCOPE();
-
-  if (method->callers.empty()) {
-    LOG_G("Root!\n");
-  }
-
-  if (method->callees.empty()) {
-    LOG_G("Leaf!\n");
-  }
-
-  for (auto ref : method->callees) {
-    LOG_G("Calls %s.%s\n", ref.mod->cname(), ref.method->cname());
-  }
-  for (auto ref : method->callers) {
-    LOG_Y("Called by %s.%s\n", ref.mod->cname(), ref.method->cname());
-  }
-
-  for (const auto& ref : method->fields_read) {
-    if (ref.subfield) {
-      LOG_G("Reads %s.%s\n", ref.field->cname(), ref.subfield->cname());
-    }
-    else {
-      LOG_G("Reads %s\n", ref.field->cname());
-    }
-  }
-
-  for (const auto& ref : method->fields_written) {
-    if (ref.subfield) {
-      LOG_R("Writes %s.%s\n", ref.field->cname(), ref.subfield->cname());
-    }
-    else {
-      LOG_R("Writes %s\n", ref.field->cname());
-    }
-  }
-}
-
-#endif

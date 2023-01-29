@@ -31,16 +31,24 @@ module example_data_memory_bus (
     // in
    // in
 
+  parameter filename = "";
+  initial
+  begin
+  end
+
  /*private:*/
-  example_data_memory data_memory(
-    // global clock
+  example_data_memory #(
+    // Constructor Parameters
+    .filename(filename)
+  ) data_memory(
+    // Global clock
     .clock(clock),
-    // input signals
+    // Input signals
     .address(data_memory_address),
     .wren(data_memory_wren),
     .byteena(data_memory_byteena),
     .data(data_memory_data),
-    // output signals
+    // Output signals
     .q(data_memory_q)
   );
   logic[rv_config::DATA_BITS - 2-1:0] data_memory_address;

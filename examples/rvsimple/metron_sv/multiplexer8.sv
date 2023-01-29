@@ -24,7 +24,8 @@ module multiplexer8 (
   // output signals
   output logic[WIDTH-1:0] out
 );
-parameter  WIDTH = 32;
+  parameter WIDTH = 32;
+
  /*public:*/
 
   always_comb begin : tock
@@ -38,7 +39,7 @@ parameter  WIDTH = 32;
       5:  out = in5;
       6:  out = in6;
       7:  out = in7;
-      default: out = WIDTH'(1'bx);
+      default: out = 'x;
     endcase
     // clang-format on
   end

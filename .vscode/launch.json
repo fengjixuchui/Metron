@@ -7,8 +7,10 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/bin/metron",
+      //"program": "${workspaceFolder}/bin/examples/rvsimple_vl",
       "cwd": "${workspaceFolder}",
-      "args": ["-e", "-c", "tests/metron_good/constructor_args.h"],
+      "args": ["-d", "-c", "examples/scratch.h", "-o", "examples/scratch.sv"],
+      //"args": [],
       "setupCommands": [
         { // Display content in STL containers pretty
           "description": "Enable pretty-printing for gdb",

@@ -1,11 +1,36 @@
 #include "metron_tools.h"
 
-//------------------------------------------------------------------------------
+// Yosys doesn't seem to support passing structs as args or returning them from
+// functions. :/
 
-class MetroBoySPU2 {
+struct InnerStruct {
+  logic<8> a;
+  logic<8> b;
+  logic<8> c;
+};
+
+class Submodule {
+public:
+  logic<8> d;
+  logic<8> e;
+  logic<8> f;
+};
+
+class Module {
 public:
 
-private:
-  logic<8> memory[256];
-  logic<8> data_out;
+  Submodule sm;
+
+  logic<8> a;
+  logic<8> b;
+  logic<8> c;
+
+  void func1(InnerStruct is, logic<8> derp) {
+    sm.d = a;
+    sm.e = b;
+    sm.f = c;
+    a = is.c + derp;
+    b = is.b + derp;
+    c = is.a + derp;
+  }
 };
