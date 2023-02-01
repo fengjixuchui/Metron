@@ -7,9 +7,25 @@
 struct SourceRange {
   const char* start;
   const char* end;
+
+  SourceRange trim() {
+    SourceRange r = *this;
+    while(r.start < r.end && isspace(*r.start)) r.start++;
+    while(r.end > r.start && isspace(r.end[-1])) r.end--;
+    return r;
+  }
 };
 
 //------------------------------------------------------------------------------
+
+enum FieldType {
+  FT_UNKNOWN = 0,
+  FT_REGISTER,
+  FT_SIGNAL,
+  FT_INPUT,
+  FT_OUTPUT,
+  FT_INVALID
+};
 
 enum ContextType {
   CTX_MODULE,
@@ -32,12 +48,29 @@ enum TraceState {
   CTX_NIL,      // not an actual state, just a placeholder
 };
 
+struct LogEntry {
+  TraceState state;
+  SourceRange range;
+};
+
 enum TraceAction {
   CTX_READ = 0,
   CTX_WRITE = 1,
 };
 
 // KCOV_OFF
+inline const char* to_string(FieldType f) {
+  switch (f) {
+    case FT_UNKNOWN:  return "FT_UNKNOWN";
+    case FT_REGISTER: return "FT_REGISTER";
+    case FT_SIGNAL:   return "FT_SIGNAL";
+    case FT_INPUT:    return "FT_INPUT";
+    case FT_OUTPUT:   return "FT_OUTPUT";
+    case FT_INVALID:  return "FT_INVALID";
+    default:          return "???";
+  }
+}
+
 inline const char* to_string(TraceAction f) {
   switch (f) {
     case CTX_READ:

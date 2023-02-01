@@ -5,39 +5,33 @@
 
 typedef struct packed {
   logic[7:0] a;
-  logic[7:0] b;
-  logic[7:0] c;
+  logic[31:0] d[7];
 } InnerStruct;
 
-module Submodule (
-);
-/*public:*/
-endmodule
+typedef struct packed {
+  InnerStruct x;
+  InnerStruct y;
+} OuterStruct;
 
 module Module (
-  // global clock
-  input logic clock,
   // output registers
-  output logic[7:0] a,
-  output logic[7:0] b,
-  output logic[7:0] c,
-  // func1() ports
-  input InnerStruct func1_is,
-  input logic[7:0] func1_derp
+  output OuterStruct s,
+  // func2() ports
+  input OuterStruct func2_clarnk,
+  output InnerStruct func2_ret
 );
 /*public:*/
 
-  Submodule sm(
-  );
+  always_comb begin : func2
+    logic[7:0] blep;
+    clarnk.x.a = clarnk.x.a + 1;
 
+    clarnk.y.a = 7;
+    blep = clarnk.y.a;
 
-
-  always_ff @(posedge clock) begin : func1
-    sm.d = a;
-    sm.e = b;
-    sm.f = c;
-    a <= func1_is.c + func1_derp;
-    b <= func1_is.b + func1_derp;
-    c <= func1_is.a + func1_derp;
+    s.y.a = clarnk.y.d[2];
+    s.y.d[6] = 5;
+    s.y.a = 6;
+    func2_ret = s.x;
   end
 endmodule

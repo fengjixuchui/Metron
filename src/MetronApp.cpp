@@ -190,27 +190,36 @@ int main(int argc, char** argv) {
   //----------------------------------------
   // New Trace
 
-#if 0
+#if 1
   for (auto mod : lib.all_modules) {
     if (mod->refcount) continue;
 
     LOG_B("Tracing version 2: %s\n", mod->cname());
-    LOG_INDENT();
+    LOG_INDENT_SCOPE();
 
-    MtModuleInstance* root_inst = new MtModuleInstance(mod);
-    root_inst->dump();
+    MtModuleInstance* root_inst = new MtModuleInstance("<top>", mod);
+    //root_inst->dump();
 
     MtTracer2 tracer(&lib, root_inst, true);
 
     for (auto m : root_inst->_methods) {
-      err << tracer.trace_method(m->_method);
+      LOG_B("Tracing %s\n", m.second->_name.c_str());
+      {
+        LOG_INDENT_SCOPE();
+        err << tracer.trace_method(m.second->_method);
+      }
+      LOG_B("Tracing %s done\n", m.second->_name.c_str());
+      //root_inst->dump();
+      LOG_B("\n");
+      root_inst->reset_state();
     }
 
-    delete root_inst;
+    //LOG_B("\n");
+    //root_inst->dump();
 
-    LOG_DEDENT();
+    delete root_inst;
   }
-  LOG_B("Tracing version 2 done\n");
+  LOG_B("Tracing version 2: done\n");
   LOG_B("\n");
 #endif
 

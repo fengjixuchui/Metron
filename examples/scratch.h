@@ -1,36 +1,29 @@
 #include "metron_tools.h"
 
-// Yosys doesn't seem to support passing structs as args or returning them from
-// functions. :/
-
-struct InnerStruct {
-  logic<8> a;
-  logic<8> b;
-  logic<8> c;
-};
-
-class Submodule {
-public:
-  logic<8> d;
-  logic<8> e;
-  logic<8> f;
-};
+// Simple switch statements are OK.
 
 class Module {
 public:
 
-  Submodule sm;
-
-  logic<8> a;
-  logic<8> b;
-  logic<8> c;
-
-  void func1(InnerStruct is, logic<8> derp) {
-    sm.d = a;
-    sm.e = b;
-    sm.f = c;
-    a = is.c + derp;
-    b = is.b + derp;
-    c = is.a + derp;
+  void tock(logic<2> selector) {
+    tick(selector);
   }
+
+private:
+
+  void tick(logic<2> selector) {
+    switch(selector) {
+      case 0: // comment
+        my_reg = 17; break;
+      case 1:  // comment
+        my_reg = 22; break;
+      case 2: my_reg = 30; break;
+      case 3: // fallthrough
+      case 4:
+      case 5:
+      case 6: my_reg = 72; break;
+    }
+  }
+
+  logic<8> my_reg;
 };
